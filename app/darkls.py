@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 import profiles
 import server as s
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 UPSTREAM_COMMIT = "7df9f78e3a0fde1dcdee92e6b2f43293faf17d8a"
 LIMIT = 32 * 1024 * 1024
 BASE = "/data/quazar/yam"
@@ -177,6 +177,8 @@ def install(s):
     s.Panel.yam_autostart = yam_autostart
     s.Panel.yam_install_daemon = yam_install
     s.Panel.yam_update_daemon = yam_install
+    import yam_releases
+    yam_releases.install(s)
     s.Panel.yam_install = install_registry_package
 
     def alive(self):

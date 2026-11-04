@@ -1,0 +1,60 @@
+name: Panel release
+on:
+  push:
+    branches: [main]
+    paths: ['app/**', 'tests/**', 'build-release.py', 'release-notes.txt', '.github/workflows/release.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: panel-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Test panel and updater
+        run: |
+          python -m unittest discover -s tests -v
+          python -m compileall -q app
+          node --check app/static/native-media.js
+          node --check app/static/maintenance.js
+          node --check app/static/native-updates.js
+      - name: Build application and manifest
+        run: python build-release.py --repository "$GITHUB_REPOSITORY"
+      - name: Publish version once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          version=$(tr -d '\r\n' < app/DARKLS_VERSION)
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v$version already exists; leaving it intact."
+            exit 0
+          fi
+          gh release create "v$version" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "DARKLS Alice Panel $version" --notes-file release-notes.txt dist/app.tar.gz dist/update.json dist/source.zip
+      - name: Keep manifest reference current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          version=$(tr -d '\r\n' < app/DARKLS_VERSION)
+          mkdir -p published
+          gh release download "v$version" --repo "$GITHUB_REPOSITORY" --pattern update.json --dir published
+          python - <<'PY'
+          import base64,json,os,subprocess
+          repo=os.environ['GITHUB_REPOSITORY']
+          manifest=json.load(open('published/update.json'))
+          values={'update.json':manifest,'release.json':{k:manifest[k] for k in ('version','sha256','size')}}
+          for name,value in values.items():
+              result=subprocess.run(['gh','api',f'repos/{repo}/contents/{name}'],capture_output=True,text=True)
+              content=json.dumps(value,ensure_ascii=False,indent=2)+'\n'
+              body={'message':'Update published panel '+name,'content':base64.b64encode(content.encode()).decode()}
+              if result.returncode==0: body['sha']=json.loads(result.stdout)['sha']
+              with open('manifest-request.json','w') as f:json.dump(body,f)
+              subprocess.run(['gh','api','--method','PUT',f'repos/{repo}/contents/{name}','--input','manifest-request.json'],check=True,stdout=subprocess.DEVNULL)
+          PY

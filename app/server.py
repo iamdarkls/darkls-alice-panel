@@ -1041,7 +1041,7 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
 
     def _transcode_and_play(self, src_bytes):
         if not self.ffmpeg:
-            raise AdbError("Для этого формата нужен ffmpeg в среде панели (поддерживается только WAV)")
+            raise AdbError("Для этого формата установи аудио-FFmpeg: Настройки → Аудиоформаты. Пока доступен WAV.")
         with tempfile.TemporaryDirectory() as td:
             dst = Path(td) / "out.wav"
             p = subprocess.run([self.ffmpeg, "-hide_banner", "-loglevel", "error", "-i", "pipe:0",

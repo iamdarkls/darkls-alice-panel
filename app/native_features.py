@@ -319,11 +319,22 @@ def rollback(updater):
 
 def install(module, updater):
     maintenance = Maintenance(updater.base)
+    import native_media
+    media = native_media.Media(updater.base)
+    original_init = module.Panel.__init__
+    def panel_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        try:
+            self.ffmpeg = media.executable() or self.ffmpeg
+        except (OSError, ValueError) as exc:
+            print('Optional FFmpeg: '+str(exc), flush=True)
+    module.Panel.__init__ = panel_init
     old_get, old_post = module.Handler.do_GET, module.Handler.do_POST
     def get(self):
         path = urlsplit(self.path).path
         routes = {'/api/native/backups': maintenance.info,
-                  '/api/native/voice': maintenance.voice_config}
+                  '/api/native/voice': maintenance.voice_config,
+                  '/api/native/media': lambda: media.info(self.panel)}
         if path not in routes and path != '/api/native/backups/download':
             return old_get(self)
         if self._guard(path):
@@ -341,6 +352,7 @@ def install(module, updater):
         routes = {'/api/native/backups/create', '/api/native/backups/restore', '/api/native/diagnostics',
                   '/api/native/voice/config', '/api/native/voice/status', '/api/native/voice/start',
                   '/api/native/voice/stop', '/api/native/voice/restart', '/api/native/updates/rollback'}
+        routes.add('/api/native/media/install')
         if path not in routes:
             # Bound existing native JSON endpoints too.
             if path.startswith('/api/native/'):
@@ -372,6 +384,7 @@ def install(module, updater):
         actions = {'/api/native/backups/create': lambda: maintenance.create_backup(data.get('secrets',False)),
                    '/api/native/diagnostics': maintenance.diagnostics,
                    '/api/native/voice/config': lambda: maintenance.voice_config(data),
+                   '/api/native/media/install': lambda: media.install(self.panel),
                    '/api/native/updates/rollback': lambda: rollback(updater)}
         if path in actions:
             return self._handle(actions[path])
