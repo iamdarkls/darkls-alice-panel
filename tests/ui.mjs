@@ -1,0 +1,22 @@
+import {Window} from '../../.test-tools/node_modules/happy-dom/lib/index.js';
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const w=new Window({url:'http://alice.test:8770/#chatgpt',settings:{enableJavaScriptEvaluation:true,disableJavaScriptFileLoading:true,disableCSSFileLoading:true}});
+const html=fs.readFileSync('release-0.3.0/app/static/unified.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');w.document.write(html);
+const calls=[];
+w.fetch=async(url,opt={})=>{calls.push([url,opt]);let value={};if(url.includes('/voice')&&!url.includes('/status'))value={url:'https://voice.test',has_token:true,compatibility_confirmed:false,note:'Unverified Mini 3 Pro'};if(url.includes('/voice/status'))value={agent:'darkls-voice-agent',state:{ActiveState:'inactive'}};if(url.endsWith('/updates'))value={installed:'0.3.0',feed:'https://github.com/owner/repo/releases/latest/download/update.json',auto:false,previous:'0.2.0-old',status:{checked:1700000000,available:true,latest:'0.3.1',notes:'New changes'}};if(url.endsWith('/diagnostics'))value={created:1700000000,firmware:'factory-12',checks:[{name:'Storage',status:'ok',detail:'100 MB'}]};if(url.endsWith('/backups'))value={last_backup:{created:1700000000,size:1024}};return {ok:true,json:async()=>value};};w.confirm=()=>true;
+for(const file of ['maintenance.js','native-updates.js'])w.eval(fs.readFileSync('release-0.3.0/app/static/'+file,'utf8'));
+await new Promise(r=>setTimeout(r,20));
+assert.equal(w.document.getElementById('voice-start').disabled,true);
+assert.equal(w.document.getElementById('voice-url').value,'https://voice.test');
+w.document.getElementById('voice-status').click();await new Promise(r=>setTimeout(r,20));
+assert.match(w.document.getElementById('voice-result').textContent,/inactive/);
+assert.equal(w.document.getElementById('voice-status').textContent,'Проверить связь');
+w.document.getElementById('diagnostic-run').click();await new Promise(r=>setTimeout(r,20));
+assert.match(w.document.getElementById('diagnostic-checks').textContent,/100 MB/);
+assert.equal(w.document.getElementById('diagnostic-save').disabled,false);
+assert.match(w.document.getElementById('native-notes').textContent,/New changes/);
+assert.equal(w.document.getElementById('native-rollback').disabled,false);
+w.location.hash='#backups';w.dispatchEvent(new w.HashChangeEvent('hashchange'));await new Promise(r=>setTimeout(r,20));assert.match(w.document.getElementById('backup-info').textContent,/1 КБ/);
+const ids=[...w.document.querySelectorAll('[id]')].map(x=>x.id);assert.equal(new Set(ids).size,ids.length,'Duplicate DOM IDs');
+for(const name of ['chatgpt','updates','backups']){assert(w.document.querySelector(`a[data-tab="${name}"]`));assert(w.document.getElementById('tab-'+name));}
+console.log('UI maintenance buttons, reports, navigation targets, token masking, and rollback availability: OK');await w.happyDOM.close();

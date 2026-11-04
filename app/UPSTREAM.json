@@ -1,0 +1,17 @@
+{
+  "project": "DARKLS Alice Panel",
+  "version": "0.2.0",
+  "dimap": {
+    "repository": "https://github.com/dimap/yandex-station-web",
+    "commit": "7df9f78e3a0fde1dcdee92e6b2f43293faf17d8a",
+    "declared_version": "0.1.4",
+    "license": "MIT",
+    "notice": "Full upstream Python, static assets, device scripts and model restrictions retained."
+  },
+  "yam_api": {
+    "repository": "https://github.com/nyakokitsu/yam",
+    "tag": "v0.2.08",
+    "commit": "34c0c82fc4db5a61ee80d9c5aba8e2670a9cecc6",
+    "notice": "YAM source/binaries are not bundled. Uses the daemon already installed on the speaker."
+  }
+}

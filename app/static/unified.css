@@ -1,0 +1,24 @@
+/* Only added sections. Existing dimap layout and theme variables are unchanged. */
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.status-dot.good{background:var(--ok)}.status-dot.bad{background:var(--danger)}
+.darkls-page .native-state{font-size:25px;font-weight:800;letter-spacing:-.02em}
+.darkls-page .placeholder{text-align:center;padding:22px 10px;color:var(--muted);font-size:13px;line-height:1.7}
+.darkls-page .placeholder strong{display:block;color:var(--text);margin-bottom:6px}
+.darkls-page .placeholder a{display:inline-block;margin-top:12px;color:var(--accent-ink)}
+.darkls-page .empty-icon{display:block;font-size:25px;margin-bottom:8px}
+.darkls-page .package-list{display:grid;gap:14px}
+.darkls-page .package-item{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px;border:1px solid var(--line);border-radius:14px}
+.darkls-page .package-item h3{margin:0 0 6px;font-size:15px}
+.darkls-page .package-item p{margin:4px 0;font-size:12px;color:var(--muted);line-height:1.6}
+.darkls-page .package-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:7px;max-width:380px}
+.darkls-page .muted{color:var(--muted);font-size:12px}
+.darkls-page .package-item .badge{margin:5px 6px 3px 0}
+.darkls-page .sensor-row,.darkls-page .summary-row{display:flex;justify-content:space-between;gap:15px;padding:11px 0;border-bottom:1px solid var(--line);font-size:13px}
+.darkls-page .sensor-row span,.darkls-page .summary-row span{color:var(--muted)}
+.darkls-page .sensor-row:last-child,.darkls-page .summary-row:last-child{border-bottom:0}
+.upload-label{cursor:pointer}
+#darkls-toast{position:fixed;z-index:999;bottom:24px;left:50%;transform:translateX(-50%);max-width:min(90vw,560px);padding:13px 19px;border-radius:12px;background:var(--text);color:var(--card);box-shadow:var(--shadow);font-size:13px}
+#darkls-toast.error{background:var(--danger);color:#fff}
+#login-dialog{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:18px;padding:25px;max-width:400px}
+#login-dialog::backdrop{background:#0008}#login-form{display:flex;flex-direction:column;gap:16px}#login-form h2{margin:0}#login-error{color:var(--danger);margin:0}
+@media(max-width:900px){.darkls-page .package-item{align-items:flex-start;flex-direction:column}.darkls-page .package-actions{max-width:none;justify-content:flex-start}}
