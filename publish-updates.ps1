@@ -10,7 +10,13 @@ if ($Repository -notmatch '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$') { throw 'Use owner/
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'Install GitHub CLI: winget install --id GitHub.cli --exact. Then reopen PowerShell.' }
 & gh auth status
 if ($LASTEXITCODE -ne 0) { throw 'Run gh auth login, then repeat.' }
-& gh repo view $Repository --json name 2>$null | Out-Null
+$savedPreference=$ErrorActionPreference
+try {
+ $ErrorActionPreference='Continue'
+ & gh repo view $Repository --json name 2>$null | Out-Null
+} finally {
+ $ErrorActionPreference=$savedPreference
+}
 if ($LASTEXITCODE -ne 0) {
  if (-not $CreateRepository) { throw 'Repository not accessible. To create a PUBLIC repository, use -CreateRepository.' }
  & gh repo create $Repository --public --description 'DARKLS Alice native panel for Mini 3 Pro'
@@ -24,10 +30,12 @@ $version=$meta.version
 if ((Get-FileHash .\app.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant() -ne $meta.sha256) { throw 'Application archive checksum mismatch' }
 $sourceCommit=& .\sync-source.ps1 -Repository $Repository
 if ($sourceCommit -notmatch '^[a-f0-9]{40}$') { throw 'Source commit was not confirmed' }
-$notes=Get-Content -Raw -Encoding UTF8 .\release-notes.txt
+$notes=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'release-notes.txt'), [Text.Encoding]::UTF8)
 $manifest=[ordered]@{schema=1;target='aarch64-linux-gnu';version=$version;min_python='3.14';url="https://github.com/$Repository/releases/download/v$version/app.tar.gz";sha256=$meta.sha256;size=$meta.size;notes=$notes;published=[DateTime]::UtcNow.ToString('o')}
 $utf8=New-Object System.Text.UTF8Encoding($false)
-[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'update.json'),($manifest|ConvertTo-Json -Depth 5),$utf8)
+$manifestJson=$manifest|ConvertTo-Json -Depth 5
+if ([Text.Encoding]::UTF8.GetByteCount($manifestJson) -gt 65536) { throw 'Manifest exceeds 64 KiB. Release notes must be plain text.' }
+[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'update.json'),$manifestJson,$utf8)
 # Never overwrite a published release silently. A reused version must be inspected manually.
 & gh release create "v$version" --repo $Repository --target $sourceCommit --title "DARKLS Alice Panel $version" --notes-file .\release-notes.txt .\app.tar.gz .\update.json .\source.zip
 if ($LASTEXITCODE -ne 0) { throw 'Release publication failed. Existing release/assets were not replaced.' }
