@@ -636,8 +636,6 @@
       <a href="#alarm" data-tab="alarm" data-view="alarm"><svg width="20" height="20" aria-hidden="true"><use href="#i-alarm"/></svg>Будильник</a>
       <a href="#boot" data-tab="boot" data-view="boot"><svg width="20" height="20" aria-hidden="true"><use href="#i-power"/></svg>Запуск</a>
       <a href="#yam" data-tab="yam" data-view="yam"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>YAM v2</a>
-      <a href="#packages" data-tab="packages" data-view="packages"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>Legacy .yap <span class="badge" id="nav-count">—</span></a>
-      <a href="#apps" data-tab="apps" data-view="apps"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>Legacy yamd</a>
       <a href="#files" data-tab="files" data-view="files"><svg width="20" height="20" aria-hidden="true"><use href="#i-folder"/></svg>Файлы</a>
       <a href="#console" data-tab="console" data-view="console"><svg width="20" height="20" aria-hidden="true"><use href="#i-term"/></svg>Консоль</a>
       <div class="nav-group" role="presentation">Состояние</div>
@@ -654,44 +652,35 @@
       <b><span class="dot" id="conn"></span><span id="conn-text">Подключение…</span></b>
       <small id="conn-ip">—</small>
     </div>
-  <div class="conn"><b><span class="status-dot" id="sidebar-status"></span><span id="sidebar-text">Проверяем связь</span></b><small>YAM + ADB</small></div><button id="menu-button" hidden aria-label="Меню"></button><span id="breadcrumb" hidden></span></aside>
+  <div class="conn"><b><span class="status-dot" id="sidebar-status"></span><span id="sidebar-text">Проверяем связь</span></b><small>Локальное управление</small></div><button id="menu-button" hidden aria-label="Меню"></button><span id="breadcrumb" hidden></span></aside>
 
 <!-- Additional native sections use dimap's existing card, button and theme styles. -->
 <main id="tab-home" data-page class="darkls-page" hidden>
   <header class="page-head"><div><h1>Главная</h1><div class="sub" id="station-address">Подключение…</div></div><div class="actions"><span class="badge" id="hero-status">Проверяем связь</span><button class="btn" data-refresh>Обновить</button></div></header>
   <div id="connection-error" class="card hint" role="status" hidden></div>
   <section class="card"><div class="card-head"><h2>YAM v2</h2><span class="badge" id="y2-home-version">Проверяем…</span></div><p class="hint">Актуальный менеджер пакетов .yampkg работает прямо на колонке.</p><a class="btn primary" href="#yam">Открыть YAM v2</a></section>
-  <section class="grid stats">
-    <article class="card"><div class="card-head"><h2>Legacy yamd</h2><span class="status-dot" id="yam-dot"></span></div><strong class="native-state" id="yam-state">Проверка…</strong><p class="hint" id="yam-detail">Прямое соединение с колонкой</p><div class="row"><a class="btn sm" href="#packages">Пакеты</a><a class="btn sm" id="yam-link" href="#" target="_blank" rel="noopener">Интерфейс YAM ↗</a></div></article>
-    <article class="card"><div class="card-head"><h2 id="local-access-label">Системный доступ</h2><span class="status-dot" id="adb-dot"></span></div><strong class="native-state" id="adb-state">Проверка…</strong><p class="hint" id="adb-detail">Файлы, консоль и управление колонкой</p><div class="row"><a class="btn sm" href="#console">Консоль</a><a class="btn sm" href="#diagnostics">Диагностика</a></div></article>
-  </section>
-  <section class="card"><div class="card-head"><h2>Управление колонкой</h2><span class="meta" id="hero-platform">Мини 3 Про · Pickle</span></div><div class="row"><a class="btn primary" href="#overview">Открыть обзор</a><a class="btn" href="#player">Открыть плеер</a><a class="btn" href="#files">Файлы</a><a class="btn" href="#charts">Графики</a><a class="btn" href="#settings">Настройки</a></div><p class="hint">Все разделы открываются здесь. YAM работает независимо от подключения ADB.</p></section>
-  <div class="cols"><article class="card"><div class="card-head"><h2>Legacy .yap <span class="badge" id="home-count">—</span></h2><a class="btn sm" href="#packages">Управлять</a></div><div id="home-packages" class="placeholder">Получаем список…</div></article><article class="card"><div class="card-head"><h2>Датчики</h2><span class="meta">YAM API</span></div><div id="sensors">Получаем данные…</div><p class="hint">Только датчики, обнаруженные на колонке.</p></article></div>
+  <section class="card"><div class="card-head"><h2>Локальный доступ</h2><span class="status-dot" id="adb-dot"></span></div><strong class="native-state" id="adb-state">Проверка…</strong><p class="hint" id="adb-detail">Панель работает на колонке</p><a class="btn" href="#console">Консоль</a></section>
+  <section class="card"><div class="card-head"><h2>Управление колонкой</h2><span class="meta" id="hero-platform">Мини 3 Про · Pickle</span></div><div class="row"><a class="btn primary" href="#overview">Открыть обзор</a><a class="btn" href="#player">Открыть плеер</a><a class="btn" href="#files">Файлы</a><a class="btn" href="#charts">Графики</a><a class="btn" href="#settings">Настройки</a></div><p class="hint">Все разделы открываются здесь. Управление идёт локально; ПК, ADB и yamd не требуются.</p></section>
+  <div class="cols"><article class="card"><div class="card-head"><h2>Пакеты YAM <span class="badge" id="home-count">—</span></h2><a class="btn sm" href="#yam">Управлять</a></div><div id="home-packages" class="placeholder">Получаем список…</div></article><article class="card"><div class="card-head"><h2>Датчики</h2><span class="meta">Данные ядра · sysfs</span></div><div id="sensors">Получаем данные…</div><p class="hint">Только датчики, обнаруженные на колонке.</p></article></div>
 </main>
 <main id="tab-yam" data-page hidden>
 <header class="page-head"><div><h1>YAM v2</h1><div class="sub">Пакеты .yampkg · Мини 3 Про / pickle · управление на колонке</div></div><button class="btn" id="y2-refresh">Обновить данные</button></header>
 <section class="card"><div class="card-head"><h2>Менеджер пакетов</h2><span class="badge" id="y2-version">Проверяем…</span></div>
 <p class="hint" id="y2-state" role="status">Получаем состояние YAM…</p>
 <div class="row"><button class="btn primary" id="y2-bootstrap">Установить актуальный YAM</button><button class="btn" id="y2-latest">Проверить версию</button><a class="btn" href="https://github.com/nyakokitsu/yam/releases" target="_blank" rel="noopener">Релизы ↗</a></div>
-<p class="hint">YAM v2 работает через CLI без yamd и отдельного веб-интерфейса. Устанавливается в /data/yam. Старый yamd и его пакеты .yap остаются отдельно: <a href="#packages">Legacy .yap</a>. Автоматического преобразования пакетов нет.</p>
+<p class="hint">YAM v2 работает через CLI без yamd и отдельного веб-интерфейса. Устанавливается в /data/yam. Управление пакетами работает без HTTP-демона. Установленные ранее .yap не преобразуются в .yampkg.</p>
 </section>
+<section class="card" id="y2-transition" hidden><h2>Завершить переход</h2><p class="hint" id="y2-transition-note">Установи YAM v2, затем заверши переход: старые приложения .yap остановятся, yamd и его автозапуск будут отключены, каталог с данными переместится в архив. Файлы не удаляются.</p><button class="btn" id="y2-retire">Завершить переход и убрать yamd</button></section>
 <div id="y2-controls" hidden>
 <section class="card"><div class="card-head"><h2>Установленные пакеты <span class="badge" id="y2-count">0</span></h2><label class="btn upload-label">Загрузить .yampkg<input type="file" id="y2-file" accept=".yampkg" hidden></label></div><p class="hint">Загрузка до 32 МБ. Локальный пакет должен быть из доверенного источника: его postinstall может выполняться с правами root.</p><label class="toggle"><span>Разрешить замену конфликтующих пакетов и установку зависимостей Entware (--yes)</span><input type="checkbox" id="y2-replace"></label><div id="y2-packages" class="package-list"></div></section>
 <section class="card"><h2>Каталог и зависимости</h2><div class="row"><select class="field" id="y2-registry" aria-label="Реестр"></select><input class="field" id="y2-query" type="search" placeholder="Название или описание" aria-label="Поиск YAM"><button class="btn" id="y2-search">Найти</button></div><div id="y2-results" class="package-list"></div>
 <div class="row"><input class="field" id="y2-name" placeholder="namespace/name или namespace/name@1.2.3" aria-label="Имя пакета"><button class="btn" id="y2-plan">Показать зависимости</button><button class="btn primary" id="y2-install">Установить</button></div><p class="hint">Каталог и индексы проверяются ключом Ed25519, скачанные пакеты — по размеру и SHA-256. Сначала проверь план установки: он не изменяет пакеты.</p></section>
 <section class="card"><h2>Реестры</h2><div id="y2-registries"></div><button class="btn" id="y2-official">Подключить официальный реестр</button><details><summary>Добавить другой реестр</summary><div class="row"><input class="field" id="y2-reg-name" placeholder="Имя"><input class="field" id="y2-reg-url" type="url" placeholder="https://repo.example/v2"><input class="field" id="y2-reg-key" placeholder="ed25519:публичный-ключ-Base64"><button class="btn" id="y2-reg-add">Добавить</button></div></details></section>
-<section class="card"><h2>Диагностика и службы</h2><div class="row"><button class="btn" id="y2-doctor">Проверить пакеты (doctor)</button><button class="btn" id="y2-repair">Восстановить ссылки (repair)</button><button class="btn" id="y2-entware">Проверить Entware</button><button class="btn" id="y2-services">Декларации служб</button></div><p class="hint">YAM 0.2.5 сохраняет декларации служб, но не запускает их. Кнопки запуска и автозапуска для пакетов v2 недоступны. Управление прежними приложениями остаётся в Legacy .yap.</p><div class="row"><input class="field" id="y2-path" placeholder="bin/команда" aria-label="Относительный путь"><button class="btn" id="y2-which">Найти владельца файла</button></div></section>
+<section class="card"><h2>Диагностика и службы</h2><div class="row"><button class="btn" id="y2-doctor">Проверить пакеты (doctor)</button><button class="btn" id="y2-repair">Восстановить ссылки (repair)</button><button class="btn" id="y2-entware">Проверить Entware</button><button class="btn" id="y2-services">Декларации служб</button></div><p class="hint">YAM 0.2.5 сохраняет декларации служб, но не запускает их. Кнопки запуска и автозапуска для пакетов v2 недоступны.</p><div class="row"><input class="field" id="y2-path" placeholder="bin/команда" aria-label="Относительный путь"><button class="btn" id="y2-which">Найти владельца файла</button></div></section>
 </div>
 <section class="card"><h2>Результат операции</h2><pre class="out" id="y2-report" aria-live="polite">Выбери действие.</pre></section>
 </main>
 
-<main id="tab-packages" data-page class="darkls-page" hidden>
-  <header class="page-head"><div><h1>Legacy .yap</h1><div class="sub">Прежние приложения yamd · новые пакеты .yampkg — в разделе YAM v2</div></div><div class="actions"><button class="btn" data-refresh>Обновить</button><a class="btn" href="#apps">Настройки yamd</a></div></header>
-  <section class="card"><h2>Установить приложение</h2><p class="hint">Загрузи пакет .yap или выбери приложение из реестра yapkg.</p><div class="row"><label class="btn primary upload-label" for="package-file">Загрузить .yap<input type="file" id="package-file" accept=".yap" hidden></label><button class="btn" id="registry-toggle">Открыть реестр</button></div></section>
-  <section class="card" id="registry-card" hidden><div class="card-head"><h2>Реестр yapkg</h2><input class="field" id="registry-search" type="search" placeholder="Найти пакет…" aria-label="Поиск пакетов"></div><div id="registry-list" class="package-list"></div></section>
-  <section class="card"><div class="card-head"><h2>Установлено <span class="badge" id="packages-count">—</span></h2></div><label class="toggle"><span>Разрешить бинарные пакеты</span><input id="allow-binaries" type="checkbox"></label><div id="package-list" class="package-list"></div></section>
-  <section class="card" id="package-log-card" hidden><div class="card-head"><h2 id="package-log-title">Журнал пакета</h2><button class="btn sm" id="close-package-log">Закрыть</button></div><pre class="out" id="package-log"></pre></section>
-</main>
 <main id="tab-updates" data-page hidden><header class="page-head"><h1>Обновления панели</h1></header><section class="card" id="native-updates"><div class="card-head"><h2>Обновления панели</h2><span class="badge ok">На колонке</span></div>
 <p class="hint">ПК не нужен. Обновляется только панель; runtime, данные, YAM и прошивка не заменяются.</p>
 <label class="set-item"><div class="set-label"><b>Источник обновлений</b><small>HTTPS-манифест из своего репозитория GitHub</small></div><div class="set-ctl"><input class="field" id="native-feed" type="url" placeholder="https://raw.githubusercontent.com/…/update.json" aria-label="Источник обновлений"></div></label>
@@ -709,10 +698,10 @@
 <label class="toggle"><span>Включить секреты: токен Яндекса, агента и бинарную конфигурацию колонки. Архив не зашифрован — храни его приватно.</span><input type="checkbox" id="backup-secrets"></label><button class="btn primary" id="backup-create">Создать и скачать</button></section>
 <section class="card"><h2>Восстановление настроек</h2><p class="hint">Восстанавливаются только настройки панели и включённые в копию токены. Снимки системных файлов предназначены для ручного восстановления; загрузка, root и прошивка автоматически не меняются. Перед восстановлением создаётся копия для отмены.</p><input class="field" id="backup-file" type="file" accept=".gz,.tgz"><button class="btn danger" id="backup-restore">Восстановить настройки</button><a class="btn" id="backup-undo" hidden>Скачать копию перед восстановлением</a><pre class="out" id="backup-status"></pre></section></main>
 <main id="tab-diagnostics" data-page class="darkls-page" hidden>
-  <header class="page-head"><div><h1>Диагностика</h1><div class="sub">Соединение с YAM и ADB проверяется отдельно</div></div><button class="btn" data-refresh>Обновить</button></header>
+  <header class="page-head"><div><h1>Диагностика</h1><div class="sub">Локальное управление, службы и YAM CLI</div></div><button class="btn" data-refresh>Обновить</button></header>
   <section class="card"><h2>Проверка колонки</h2><div class="row"><button class="btn primary" id="diagnostic-run">Проверить всё</button><button class="btn" id="diagnostic-save" disabled>Скачать отчёт</button></div><p class="hint" id="diagnostic-status">Прошивка, память, сервисы и соединение с Яндексом. Проверка занимает до 10 секунд.</p><div id="diagnostic-checks" aria-live="polite"></div><details><summary>Полный отчёт</summary><pre class="out" id="diagnostic-report"></pre></details></section><section class="card"><h2>Профиль устройства</h2><pre class="out" id="device-json">Нет данных</pre></section>
   <section class="card"><div class="card-head"><h2>Журнал ADB</h2><a class="btn sm" href="#logs">Логи Quasar</a></div><pre class="out" id="adb-log">Ожидаем данные…</pre></section>
-  <section class="card"><h2>DARKLS Alice Panel 0.4.0</h2><p class="hint">Основа и оформление: dimap/yandex-station-web, MIT. Дополнительно: прямая интеграция YAM, диагностика и исправление старого adbd.</p><p class="hint">Ограничения профиля Mini 3 Pro сохранены: неподдерживаемые операции не включаются принудительно.</p><a class="btn" href="#settings">Настройки панели</a></section>
+  <section class="card"><h2>DARKLS Alice Panel 0.5.0</h2><p class="hint">Основа и оформление: dimap/yandex-station-web, MIT. Дополнительно: локальное управление, YAM v2, диагностика и исправление старого adbd.</p><p class="hint">Ограничения профиля Mini 3 Pro сохранены: неподдерживаемые операции не включаются принудительно.</p><a class="btn" href="#settings">Настройки панели</a></section>
 </main>
 <dialog id="login-dialog"><form id="login-form"><h2>Вход в панель</h2><p class="hint">Введи пароль панели.</p><input class="field" id="login-password" type="password" autocomplete="current-password" placeholder="Пароль" required><p id="login-error" role="alert"></p><button class="btn primary" type="submit">Войти</button></form></dialog>
 <div id="darkls-toast" role="status" hidden></div>
@@ -1247,74 +1236,6 @@
         </div>
       </div>
     </section>
-  </main>
-
-  <!-- ================= ПРИЛОЖЕНИЯ (yam) ================= -->
-  <main id="tab-apps" data-page hidden>
-    <header class="page-head">
-      <div><h1>Приложения</h1><div class="sub">Пакеты из реестра yapkg через менеджер yam на колонке</div></div>
-    </header>
-
-    <section class="card" id="yam-missing" hidden>
-      <h2>yam не установлен</h2>
-      <p class="hint">yam — менеджер пакетов для Станций (github.com/nyakokitsu/yam). Это отдельный legacy-раздел для старых .yap. Актуальный YAM v2 находится в одноимённом разделе меню. Здесь панель скачает совместимый старый релиз yamd с GitHub, сверит контрольную сумму, положит его на колонку в /data/quazar/yam и запустит — как официальный установщик.</p>
-      <div class="row"><button class="btn primary" id="yam-install">Установить yam</button></div>
-    </section>
-
-    <section class="card" id="yam-card">
-      <div class="card-head">
-        <h2>yamd</h2>
-        <div class="actions">
-          <span class="badge" id="yam-badge">—</span>
-          <button class="btn sm primary" id="yam-start" hidden><svg width="14" height="14" aria-hidden="true"><use href="#i-play"/></svg>Запустить</button>
-          <a class="btn sm" id="yam-web" target="_blank" rel="noopener" hidden>Веб-интерфейс yam ↗</a>
-        </div>
-      </div>
-      <p class="hint" id="yam-off" hidden>Демон не работает — без него устанавливать и запускать пакеты нельзя.</p>
-      <div class="set-item" id="yam-ver-row">
-        <div class="set-label"><b>Версия</b><small id="yam-ver">проверяем…</small></div>
-        <div class="set-ctl"><a class="btn sm" id="yam-notes" target="_blank" rel="noopener" hidden>Что нового ↗</a>
-          <button class="btn sm primary" id="yam-update" hidden>Обновить yamd</button></div>
-      </div>
-      <div id="yam-update-confirm" hidden class="hint">
-        <p id="yam-update-text"></p>
-        <button class="btn primary" id="yam-update-confirm-btn">Обновить сейчас</button>
-        <button class="btn" id="yam-update-cancel">Отмена</button>
-      </div>
-      <p id="yam-update-result" role="status" class="hint" hidden></p>
-      <label class="toggle"><span>Запускать yamd при загрузке колонки</span>
-        <input type="checkbox" id="yam-autostart"></label>
-    </section>
-
-    <div id="yam-on" hidden>
-      <div class="cols" style="margin-bottom:14px">
-        <section class="card">
-          <div class="card-head"><h2>Установлено</h2><span class="meta" id="yam-count"></span></div>
-          <div id="yam-installed"><div class="empty">Загрузка…</div></div>
-        </section>
-        <section class="card">
-          <h2>Настройки yamd</h2>
-          <label class="toggle"><span>Разрешить бинарные пакеты <span class="meta" style="font-weight:500">— почти все пакеты реестра — программы; без этого они ставятся, но не запускаются</span></span>
-            <input type="checkbox" id="yam-binaries"></label>
-          <p class="hint">У API и веб-интерфейса yamd на порту 8099 нет авторизации — любой в локальной сети может ставить и запускать пакеты.</p>
-          <div class="card-head"><h2 style="font-size:15px">Лог пакета</h2><span class="meta mono" id="yam-log-id"></span></div>
-          <pre class="out" id="yam-log" style="min-height:120px;max-height:300px">Нажмите «Лог» у пакета.</pre>
-          <p class="hint">Разовые пакеты (как fastfetch) пишут результат сюда — он откроется сам после «Запустить».
-            Программы из пакетов можно запускать и в «Консоли» по имени, например <code>fastfetch</code>.</p>
-        </section>
-      </div>
-      <section class="card">
-        <div class="card-head">
-          <h2>Каталог</h2>
-          <div class="row" style="gap:8px">
-            <label class="search" style="min-width:220px"><svg width="16" height="16" aria-hidden="true"><use href="#i-search"/></svg>
-              <input type="search" id="yam-filter" placeholder="Найти пакет" aria-label="Найти пакет"></label>
-            <button class="btn sm icon" id="yam-refresh" aria-label="Обновить каталог"><svg width="16" height="16" aria-hidden="true"><use href="#i-refresh"/></svg></button>
-          </div>
-        </div>
-        <div class="apps-grid" id="yam-catalog"><div class="empty">Загрузка…</div></div>
-      </section>
-    </div>
   </main>
 
   <!-- ================= ФАЙЛЫ ================= -->
@@ -2221,14 +2142,14 @@ const store = {
   get: k => { try { return localStorage.getItem(PanelContext.storageKey(k)); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(PanelContext.storageKey(k), v); } catch {} },
 };
-const TABS = ['yam', 'home', 'packages', 'diagnostics', 'updates', 'backups', 'chatgpt', 'overview', 'player', 'alarm', 'charts', 'boot', 'apps', 'files', 'logs', 'console', 'settings'];
+const TABS = ['yam', 'home', 'diagnostics', 'updates', 'backups', 'chatgpt', 'overview', 'player', 'alarm', 'charts', 'boot', 'files', 'logs', 'console', 'settings'];
 let bootLoaded = false;
 let logsLoaded = false;
 let shownTab = null;
 function showTab() {
   const h = location.hash.slice(1);
   const tab = TABS.includes(h) ? h : (online ? 'overview' : 'home');
-  const direct = ['yam','home','packages','diagnostics','settings','apps','updates','backups','chatgpt'].includes(tab);
+  const direct = ['yam','home','diagnostics','settings','updates','backups','chatgpt'].includes(tab);
   // другая вкладка — начинаем её сверху (например, переход в «Плеер» из нижнего плеера)
   if (online && shownTab && tab !== shownTab) window.scrollTo({ top: 0 });
   if (online) shownTab = tab;
@@ -2237,7 +2158,6 @@ function showTab() {
   $$('main[data-page]').forEach(m => m.hidden = (!online && !direct) || m.id !== 'tab-' + tab);
   if (!online) {
     if (tab === 'settings') { loadAccess(); loadPanelVersion().catch(() => {}); loadPanelModel(); }
-    if (tab === 'apps') loadYam();
     return;
   }
   if (tab === 'files' && !fs.loaded) fsOpen(store.get('fs.cwd') || '/data/quasar');
@@ -2250,7 +2170,6 @@ function showTab() {
   }
   if (tab === 'console') setTimeout(() => { termConnect(); try { termFit?.fit(); } catch {} term?.focus(); }, 0);
   if (tab === 'boot' && !bootLoaded) { bootLoaded = true; loadBoot(); }
-  if (tab === 'apps') loadYam();
   if (tab === 'alarm') loadAlarms();
   if (tab === 'charts') loadCharts();
   if (tab === 'settings') { loadAccess(); loadFootprint(); loadPanelVersion().catch(() => {}); loadPanelModel(); }
@@ -2667,174 +2586,6 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
   }
   requestAnimationFrame(frame);
 })();
-
-// ---------- приложения (yam) ----------
-const yam = { registry: [], plugins: [] };
-async function loadYam() {
-  let st;
-  try { st = await api('/api/yam/status'); } catch (e) { return e.offline || toast(e.message, true); }
-  yam.status = st;
-  $('#yam-missing').hidden = st.installed;
-  $('#yam-card').hidden = !st.installed;
-  if (!st.installed) { $('#yam-on').hidden = true; return; }
-  $('#yam-badge').textContent = st.running ? 'yamd работает' : 'yamd остановлен';
-  $('#yam-badge').className = 'badge' + (st.running ? ' ok' : ' bad');
-  $('#yam-start').hidden = st.running;
-  $('#yam-off').hidden = st.running;
-  $('#yam-autostart').checked = st.autostart;
-  $('#yam-on').hidden = !st.running;
-  $('#yam-web').hidden = !(st.running && st.web_url);
-  if (st.web_url) $('#yam-web').href = st.web_url;
-  loadYamVersion();          // GitHub может отвечать долго — версию дорисуем отдельно
-  if (!st.running) return;
-  const [plugins, reg, settings] = await Promise.all([
-    api('/api/yam/plugins').catch(e => (toast(e.message, true), [])),
-    api('/api/yam/registry').catch(e => (toast('Реестр: ' + e.message, true), { packages: [] })),
-    api('/api/yam/settings').catch(() => null),
-  ]);
-  yam.plugins = plugins; yam.registry = reg.packages || [];
-  if (settings) $('#yam-binaries').checked = settings.allow_plugin_binaries;
-  renderYam();
-}
-const yamCall = (btn, body, msg) => act(btn, async () => { await api('/api/yam/action', body); await loadYam(); }, msg);
-// Сравнение версий вида 1.2.10 (и v-префикса): «1.2.10» новее «1.2.9», «1.0.0-beta» старше «1.0.0».
-function vcmp(a, b) {
-  const [ma, pa = ''] = String(a || '').replace(/^v/, '').split('-'), [mb, pb = ''] = String(b || '').replace(/^v/, '').split('-');
-  const xa = ma.split('.'), xb = mb.split('.');
-  for (let i = 0; i < Math.max(xa.length, xb.length); i++) {
-    const d = (+xa[i] || 0) - (+xb[i] || 0);
-    if (d) return Math.sign(d);
-  }
-  if (pa === pb) return 0;
-  return !pa ? 1 : !pb ? -1 : Math.sign(pa.localeCompare(pb));   // финальная версия новее предварительной
-}
-// Самая новая версия каждого пакета в реестре
-const yamLatest = () => yam.registry.reduce((m, p) => (!m[p.id] || vcmp(p.version, m[p.id].version) > 0 ? { ...m, [p.id]: p } : m), {});
-async function loadYamVersion(refresh) {
-  $('#yam-ver').textContent = 'проверяем…';
-  $('#yam-update').hidden = $('#yam-notes').hidden = true;
-  let v;
-  try { v = await api('/api/yam/version' + (refresh ? '?refresh=1' : '')); } catch (e) { $('#yam-ver').textContent = e.message; return; }
-  const date = d => d ? ' от ' + new Date(d).toLocaleDateString('ru-RU') : '';
-  $('#yam-ver').textContent = v.error ? v.error
-    : !v.installed ? `сборка не из релизов yam (sha256 ${v.sha}…), последний релиз — ${v.latest || '—'}`
-    : v.update ? `установлена ${v.installed}${date(v.installed_date)}, доступна ${v.latest}${date(v.latest_date)}`
-    : `${v.installed} — последняя`;
-  $('#yam-ver').classList.toggle('warn', !!v.update);
-  $('#yam-update').hidden = !v.update;
-  if (v.latest_url) { $('#yam-notes').href = v.latest_url; $('#yam-notes').hidden = false; }
-}
-function renderYam() {
-  const inst = Object.fromEntries(yam.plugins.map(p => [p.manifest.id, p]));
-  const latest = yamLatest();
-  const newer = m => latest[m.id] && vcmp(latest[m.id].version, m.version) > 0 ? latest[m.id] : null;
-  const updates = yam.plugins.filter(p => newer(p.manifest)).length;
-  $('#yam-count').textContent = yam.plugins.length ? `${yam.plugins.length} шт.` + (updates ? ` · обновлений: ${updates}` : '') : '';
-  $('#yam-installed').innerHTML = yam.plugins.length ? yam.plugins.map(p => {
-    const m = p.manifest, kind = `${m.launch?.kind || 'lua'} · ${m.launch?.mode || 'oneshot'}`;
-    return `<div class="inst" data-id="${esc(m.id)}">
-      <div class="who"><b>${esc(m.name || m.id)} <span class="mono meta">${esc(m.version)}</span>${newer(m) ? ` <span class="badge" style="background:var(--accent-soft);color:var(--accent-ink)">доступна ${esc(newer(m).version)}</span>` : ''}</b>
-        <span class="meta">${esc(kind)}${p.compatible ? '' : ' · <span style="color:var(--danger)">' + esc(p.incompatibility || 'несовместим') + '</span>'}</span></div>
-      <span class="badge${p.running ? ' ok' : ''}">${p.running ? 'работает' : p.enabled ? 'включён' : 'выключен'}</span>
-      <div class="row" style="gap:6px">
-        ${newer(m) ? `<button class="btn sm primary" data-a="update" data-v="${esc(newer(m).version)}">Обновить</button>` : ''}
-        <button class="btn sm" data-a="toggle">${p.enabled ? 'Выключить' : 'Включить'}</button>
-        ${p.running ? '<button class="btn sm" data-a="stop">Стоп</button>' : `<button class="btn sm" data-a="run" ${p.enabled ? '' : 'disabled title="Сначала включите"'}>Запустить</button>`}
-        <button class="btn sm" data-a="logs">Лог</button>
-        <button class="btn sm icon danger" data-a="remove" aria-label="Удалить ${esc(m.id)}">${icon('i-trash', 14)}</button>
-      </div></div>`;
-  }).join('') : '<p class="hint">Пока ничего не установлено.</p>';
-  const showLog = async (b, id) => {
-    $('#yam-log-id').textContent = id;
-    const r = await act(b, () => api('/api/yam/logs?id=' + encodeURIComponent(id)));
-    if (r) { $('#yam-log').textContent = r.text || '(пусто)'; $('#yam-log').scrollTop = 1e9; }
-  };
-  $$('#yam-installed .inst button').forEach(b => b.onclick = async () => {
-    const id = b.closest('.inst').dataset.id, a = b.dataset.a;
-    if (a === 'logs') return showLog(b, id);
-    if (a === 'update') {
-      return act(b, async () => { b.textContent = 'Скачиваю…'; await api('/api/yam/install', { id, version: b.dataset.v }); await loadYam(); },
-                 `Обновлён: ${id} → ${b.dataset.v}`);
-    }
-    if (a === 'remove' && !confirm(`Удалить пакет ${id}?`)) return;
-    await yamCall(b, { action: a, id }, { toggle: 'Готово', run: 'Запущен: ' + id, stop: 'Остановлен: ' + id, remove: 'Удалён: ' + id }[a]);
-    // разовые пакеты (fastfetch и т. п.) выводят результат в лог — показываем его сразу
-    if (a === 'run' && (inst[id]?.manifest.launch?.mode || 'oneshot') === 'oneshot') {
-      await new Promise(r => setTimeout(r, 1500));
-      await showLog(null, id);
-      $('#yam-log').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  });
-
-  const f = $('#yam-filter').value.toLowerCase();
-  const list = Object.values(latest).filter(p => !f || (p.id + ' ' + p.name + ' ' + p.description).toLowerCase().includes(f));
-  $('#yam-catalog').innerHTML = list.length ? list.map(p => {
-    const have = inst[p.id];
-    const action = !have ? 'Установить' : vcmp(p.version, have.manifest.version) > 0 ? `Обновить с ${esc(have.manifest.version)}` : '';
-    return `<div class="app${have ? ' installed' : ''}">
-      <div class="app-top"><b>${esc(p.name)}</b><span class="mono">${esc(p.version)}</span></div>
-      <p>${esc(p.description)}</p>
-      <div class="row">${action ? `<button class="btn sm${have ? '' : ' primary'}" data-id="${esc(p.id)}" data-v="${esc(p.version)}">${action}</button>` : '<span class="badge ok">установлено</span>'}</div>
-    </div>`;
-  }).join('') : '<div class="empty">Ничего не найдено</div>';
-  $$('#yam-catalog button[data-id]').forEach(b => b.onclick = () => act(b, async () => {
-    b.textContent = 'Скачиваю…';
-    await api('/api/yam/install', { id: b.dataset.id, version: b.dataset.v });
-    await loadYam();
-  }, 'Установлен: ' + b.dataset.id));
-}
-$('#yam-filter').oninput = renderYam;
-$('#yam-refresh').onclick = e => act(e.currentTarget, async () => { await api('/api/yam/registry?refresh=1'); await loadYam(); loadYamVersion(true); });
-$('#yam-autostart').onchange = e => act(e.target, async () => {
-  const st = await api('/api/yam/autostart', { enabled: e.target.checked });
-  e.target.checked = st.autostart;
-}, e.target.checked ? 'yamd будет запускаться при загрузке' : 'Автозапуск yamd выключен');
-$('#yam-install').onclick = e => {
-  const btn = e.currentTarget;
-  act(btn, async () => {
-    btn.textContent = 'Скачиваю и устанавливаю…';
-    try { const r = await api('/api/yam/install-daemon', {}); toast('yam ' + (r.version || '') + ' установлен и запущен'); }
-    finally { btn.textContent = 'Установить yam'; }
-    await loadYam();
-  });
-};
-$('#yam-update').onclick = () => {
-  // Станция 2 и Мини 3 Про: перед заменой — резервная копия, прошлые копии при этом удаляются
-  const b = yam.status?.backups;
-  $('#yam-update-text').textContent = 'Обновить yamd? Пакеты временно остановятся и запустятся снова, пакеты и настройки сохранятся.'
-    + (!b ? '' : ' Перед заменой будет создана резервная копия.'
-      + (b.count ? ` Старые резервные копии (${b.count} шт., ${(b.kb / 1024).toFixed(1)} МБ) будут удалены.` : ''));
-  $('#yam-update-confirm').hidden = false;
-};
-$('#yam-update-cancel').onclick = () => { $('#yam-update-confirm').hidden = true; };
-$('#yam-update-confirm-btn').onclick = e => {
-  const btn = e.currentTarget, result = $('#yam-update-result');
-  act(btn, async () => {
-    $('#yam-update').disabled = true;
-    $('#yam-update-cancel').disabled = true;
-    result.hidden = false; result.classList.remove('warn');
-    result.textContent = 'Скачиваю и проверяю yamd. Не закрывайте страницу…';
-    try {
-      const r = await api('/api/yam/install-daemon', { drop_backups: !!yam.status?.backups?.count });
-      $('#yam-update-confirm').hidden = true;
-      result.textContent = 'yamd обновлён до ' + (r.version || 'последней версии') + '. Пакеты и настройки сохранены.';
-      toast(result.textContent);
-      await loadYam();
-    } catch (error) {
-      result.textContent = 'Не удалось обновить yamd: ' + error.message;
-      result.classList.add('warn');
-      throw error;
-    } finally {
-      $('#yam-update').disabled = false;
-      $('#yam-update-cancel').disabled = false;
-    }
-  });
-};
-$('#yam-start').onclick = e => act(e.currentTarget, async () => { await api('/api/yam/start', {}); await loadYam(); }, 'yamd запущен');
-$('#yam-binaries').onchange = e => act(e.target, async () => {
-  const r = await api('/api/yam/settings', { allow_plugin_binaries: e.target.checked });
-  e.target.checked = r.allow_plugin_binaries;
-}, e.target.checked ? 'Бинарные пакеты разрешены' : 'Бинарные пакеты запрещены');
 
 // ---------- файлы ----------
 const fs = { cwd: '/', entries: [], writable: false, sort: 'name', dir: 1, sel: null, loaded: false };

@@ -15,13 +15,16 @@ async function refresh(){
   const text=installed?'Установлен '+(v.version||'(версия не определена)'):'Ещё не установлен';
   $('y2-version').textContent=text;$('y2-home-version').textContent=text;
   $('y2-controls').hidden=!installed;
-  $('y2-state').textContent=installed?'YAM v2 готов. Управление через CLI; HTTP API yamd не требуется.':'Установи актуальную ARM64-версию YAM. Существующие пакеты yamd сохранятся отдельно.';
+  $('y2-state').textContent=installed?'YAM v2 готов. Управление через CLI; HTTP API yamd не требуется.':'Установи актуальную ARM64-версию YAM. После установки заверши переход на новый менеджер.';
   $('y2-bootstrap').textContent=installed?'Обновить YAM':'Установить актуальный YAM';
-  if(!installed)return;
+  const transition=await api('retirement');$('y2-transition').hidden=!transition.pending;$('y2-retire').disabled=!installed;
+  if(!transition.pending&&transition.archive)$('y2-state').textContent+=' Архив прежнего менеджера: '+transition.archive;
+  if(!installed){$('home-count').textContent='—';$('home-packages').textContent='Установи YAM в разделе YAM v2.';return;}
   const results=await Promise.allSettled([api('packages'),api('registries')]);
   if(results[0].status==='fulfilled'){
-    const packages=results[0].value;$('y2-count').textContent=packages.length;
-    $('y2-packages').innerHTML=packages.length?packages.map(p=>`<article class="card package-item"><div><h3>${esc(p.name)}</h3><p>${esc(p.version)} · ${esc(p.target)}</p></div><div class="row"><button class="btn sm" data-y2-files="${esc(p.name)}">Файлы</button><button class="btn sm danger" data-y2-remove="${esc(p.name)}">Удалить</button></div></article>`).join(''):'<p class="hint">Пакетов .yampkg пока нет. Прежние .yap показаны отдельно в Legacy.</p>';
+    const packages=results[0].value;$('y2-count').textContent=packages.length;$('home-count').textContent=packages.length;
+    $('home-packages').innerHTML=packages.length?packages.slice(0,4).map(p=>`<div class="summary-row"><strong>${esc(p.name)}</strong><span>${esc(p.version)}</span></div>`).join(''):'<p class="hint">Пакетов пока нет. <a href="#yam">Открыть YAM</a></p>';
+    $('y2-packages').innerHTML=packages.length?packages.map(p=>`<article class="card package-item"><div><h3>${esc(p.name)}</h3><p>${esc(p.version)} · ${esc(p.target)}</p></div><div class="row"><button class="btn sm" data-y2-files="${esc(p.name)}">Файлы</button><button class="btn sm danger" data-y2-remove="${esc(p.name)}">Удалить</button></div></article>`).join(''):'<p class="hint">Пакетов .yampkg пока нет.</p>';
   }else{$('y2-packages').textContent=results[0].reason.message;}
   if(results[1].status==='fulfilled'){
     const old=registry(),regs=results[1].value;
@@ -33,7 +36,7 @@ async function refresh(){
 async function run(fn){
   if(busy)return;busy=true;const inputs=[...$('tab-yam').querySelectorAll('button,input,select')];const states=inputs.map(e=>e.disabled);inputs.forEach(e=>e.disabled=true);
   report('Операция выполняется…');
-  try{const v=await fn();if(v!==undefined)report(v);await refresh();}catch(e){report(e.message);}finally{inputs.forEach((e,i)=>e.disabled=states[i]);busy=false;}
+  try{const v=await fn();if(v!==undefined)report(v);await refresh();}catch(e){report(e.message);}finally{inputs.forEach((e,i)=>e.disabled=states[i]);$('y2-retire').disabled=!installed;busy=false;}
 }
 $('y2-refresh').onclick=()=>run(async()=>{await refresh();return 'Данные обновлены.';});
 $('y2-latest').onclick=()=>run(async()=>{const v=await api('latest');return 'Последняя стабильная версия: '+v.version+'\n'+v.url;});
@@ -41,6 +44,7 @@ $('y2-bootstrap').onclick=()=>{
   const message=installed?'Обновить YAM его штатным механизмом с проверкой подписи? Бинарник и база будут сохранены перед операцией.':'Установить актуальный YAM ARM64 в /data/yam? Скачивание около 4 МБ; старые yamd и .yap сохранятся.';
   if(confirm(message))run(()=>api('bootstrap',{}));
 };
+$('y2-retire').onclick=()=>{if(confirm('Остановить прежние приложения .yap, убрать yamd и его автозапуск? Весь каталог и загрузочный скрипт будут сохранены в архиве.'))run(()=>api('retire',{}));};
 $('y2-official').onclick=()=>run(()=>action('official-registry'));
 $('y2-reg-add').onclick=()=>run(()=>action('registry-add',{registry:$('y2-reg-name').value.trim(),url:$('y2-reg-url').value.trim(),key:$('y2-reg-key').value.trim()}));
 $('y2-search').onclick=()=>run(async()=>{

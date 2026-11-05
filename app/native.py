@@ -122,8 +122,8 @@ class LocalTerminal:
         if pid == 0:
             try:
                 os.environ.update(TERM='xterm-256color', PS1='root@alice:\\w# ')
-                paths = [str(p.parent) for p in Path('/data/quazar/yam/data/plugins').glob('*/bin/*')]
-                os.environ['PATH'] += ':' + ':'.join(sorted(set(paths)))
+                os.environ['PATH'] += ':/data/yam/bin'
+                os.environ.update(YAM_PLATFORM='pickle',YAM_PROFILES='/data/yam/platforms',YAM_ROOT='/data/yam')
                 os.chdir('/data' if Path('/data').is_dir() else '/')
                 os.execv('/bin/sh', ['sh', '-i'])
             finally:
@@ -189,7 +189,6 @@ def install(module):
     def health(panel):
         result = old_health(panel)
         result.update(transport='local', native=True)
-        result['yam']['url'] = f'http://{panel.adb.serial.rsplit(":", 1)[0]}:8099'
         return result
     darkls.health = health
 
@@ -236,7 +235,6 @@ def install(module):
 def main():
     if os.geteuid() != 0:
         raise SystemExit('Автономный режим требует root на своей колонке')
-    os.environ.setdefault('DARKLS_YAM_URL', 'http://127.0.0.1:8099')
     original = darkls.install
     def combined(module):
         original(module)

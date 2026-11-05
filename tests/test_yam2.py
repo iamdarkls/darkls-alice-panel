@@ -86,7 +86,7 @@ class ArmIntegration(unittest.TestCase):
    shutil.copy2(os.environ['YAM2_BINARY'],root/'bin/yam')
    def runner(argv,timeout):
     p=subprocess.run([os.environ['YAM2_QEMU'],*argv],capture_output=True,text=True,timeout=timeout)
-    if p.returncode:raise ValueError(p.stderr)
+    if p.returncode:raise ValueError('CLI exit '+str(p.returncode)+': '+p.stderr)
     return p.stdout
    m=y.Yam2(base/'panel',root,runner)
    self.assertEqual(m.packages(),[]);self.assertTrue(m.action(dict(action='doctor'))['ok'])
@@ -100,7 +100,7 @@ class ArmIntegration(unittest.TestCase):
    self.assertEqual(m.packages(),[dict(name='test/demo',version='1.0.0',target='pickle')])
    self.assertEqual(m.action(dict(action='files',name='test/demo'))['files'],['bin/demo'])
    self.assertEqual(m.action(dict(action='which',path='bin/demo'))['owner'],'test/demo')
-   self.assertEqual(m.services()['items'][0]['name'],'test/demo/worker');self.assertFalse(m.services()['supervised'])
+   services=m.services();self.assertEqual(services['items'][0]['name'],'test/demo/worker');self.assertFalse(services['supervised'])
    (root/'bin/demo').unlink();self.assertFalse(m.action(dict(action='doctor'))['ok'])
    m.action(dict(action='repair'));self.assertTrue(m.action(dict(action='doctor'))['ok'])
    m.action(dict(action='remove',name='test/demo'));self.assertEqual(m.packages(),[])

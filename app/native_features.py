@@ -257,14 +257,17 @@ class Maintenance:
         checks = []
         disk = shutil.disk_usage(self.base)
         checks.append(dict(name='Свободное место /data', status='ok' if disk.free > 52*1024*1024 else 'warn', detail=f'{disk.free//1048576} МБ свободно; для обновления нужно 52 МБ'))
-        for label, path in [('Root ADB', MARKERS[0]), ('Сетевой ADB', MARKERS[1]), ('Автозапуск панели', '/etc/init.d/S99darkls'), ('Автозапуск YAM', '/etc/init.d/S99yam')]:
+        for label, path in [('Root ADB', MARKERS[0]), ('Сетевой ADB', MARKERS[1]), ('Автозапуск панели', '/etc/init.d/S99darkls')]:
             exists = Path(path).is_file()
             checks.append(dict(name=label, status='ok' if exists else 'warn', detail='Файл присутствует' if exists else 'Файл отсутствует'))
+        import native_yam2
+        yam=native_yam2.Yam2(self.base)
+        checks.append(dict(name='YAM v2',status='ok' if yam.binary.is_file() else 'warn',detail='CLI установлен' if yam.binary.is_file() else 'Установи YAM в разделе YAM v2'))
         services = {}
         for path in Path('/proc').glob('[0-9]*/cmdline'):
             try:
                 text = path.read_bytes().replace(b'\0', b' ').decode(errors='replace')
-                for name, pattern in [('updatesd', '--updatesd'), ('yamd', 'yam'), ('quasar', 'maind')]:
+                for name, pattern in [('updatesd', '--updatesd'), ('quasar', 'maind')]:
                     if pattern in text:
                         services.setdefault(name, []).append(int(path.parent.name))
             except OSError:
@@ -281,7 +284,7 @@ class Maintenance:
                 return dict(url=url, status='warn', http=exc.code, detail='Сервер ответил; доступ к конкретному API не проверен')
             except (OSError, ValueError):
                 return dict(url=url, status='error', detail='Ошибка DNS, TLS или соединения')
-        endpoints = ['https://quasar.yandex.net/', 'https://scbh.yandex.net/', 'http://127.0.0.1:8099/'] if network else []
+        endpoints = ['https://quasar.yandex.net/', 'https://scbh.yandex.net/'] if network else []
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
             reachability = list(pool.map(probe, endpoints))
         for item in reachability:

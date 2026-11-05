@@ -72,20 +72,7 @@ BOOT_ALWAYS = f"{WEB_DIR}/boot_every_time"  # наш флаг: хук удаля
 SOUND_TARGET = f"{QUASAR}/sounds/common/boot.wav"
 SOUND_CUSTOM = f"{WEB_DIR}/boot_sound.wav"
 SOUND_ORIG = f"{WEB_DIR}/boot_sound.orig.wav"
-# YAM (github.com/nyakokitsu/yam): менеджер пакетов для Станций. На колонке — демон yamd с HTTP API на :8099.
-YAM_DIR = "/data/quazar/yam"
-YAMD = f"{YAM_DIR}/bin/yamd"
-YAM_PLUGINS = f"{YAM_DIR}/data/plugins"
-# Бинарникам пакетов — право на запуск: некоторые .yap (например, fastfetch 2.70.0) собраны с файлом 0666,
-# yamd распаковывает как есть и потом получает «Permission denied». Путь берём из [launch] path в plugin.toml.
-YAM_FIX_EXEC = (f"for t in {YAM_PLUGINS}/*/plugin.toml; do [ -f \"$t\" ] || continue; d=${{t%/plugin.toml}}; "
-                "grep -q '^kind *= *\"binary\"' \"$t\" || continue; "
-                "p=$(sed -n 's/^path *= *\"\\(.*\\)\"/\\1/p' \"$t\" | head -n 1); "
-                "case \"$p\" in ''|/*|*..*) continue ;; esac; [ -f \"$d/$p\" ] && chmod 755 \"$d/$p\"; done; true")
-# В консоли панели бинарники пакетов доступны по имени (fastfetch, …).
-YAM_PATH = (f"for d in {YAM_PLUGINS}/*/*/; do [ -d \"$d\" ] && PATH=\"$PATH:${{d%/}}\"; done; export PATH; ")
-YAM_PORT = 8099
-YAM_REGISTRY = "https://raw.githubusercontent.com/nyakokitsu/yapkg/registry/index.json"
+# YAM v2 packages are managed by native_yam2.py; no daemon API.
 # Версия панели — в файле VERSION; сборка релиза проверяет, что метка vX.Y.Z с ним совпадает.
 try:
     VERSION = (Path(__file__).resolve().parent / "VERSION").read_text().strip()
@@ -129,8 +116,6 @@ def alsa_to_level(v):
 
 MUSIC_COMMANDS = {"play": (), "stop": (), "next": (), "prev": (), "rewind": ("position",),
                   "setVolume": ("volume",), "repeat": ("mode",), "shuffle": ("enable",), "sendText": ("text",)}
-YAMD_CMD = f"exec {YAMD} --data-dir {YAM_DIR}/data >{YAM_DIR}/yamd.log 2>&1"
-YAM_AUTOSTART = f"{WEB_DIR}/yamd_autostart"  # наш флаг: хук запускает yamd при загрузке
 # Будильник: sh-демон на колонке (device/alarmd.sh), конфиг и звуки — рядом.
 ALARM_DIR = f"{WEB_DIR}/alarm"
 ALARM_CONF = f"{ALARM_DIR}/alarms.conf"
@@ -172,9 +157,6 @@ BOOT_HOOK_SCRIPT = (
     # очередь аналитики — через минуту и в фоне: телеметрия стартует первой, и launcher ждёт её,
     # прежде чем запустить основной maind; адреса уже закрыты, так что за минуту ничего не уйдёт
     f"[ -f {HOSTS_CUSTOM} ] && ( sleep 60; {ANALYTICS_PURGE} ) >/dev/null 2>&1 &\n"
-    # yamd сам после загрузки не стартует; start-stop-daemon -b — чтобы не держать rootkeeper.sh
-    f"[ -f {YAM_AUTOSTART} ] && [ -x {YAMD} ] && ! pidof yamd >/dev/null && "
-    f"start-stop-daemon -S -b -m -p /tmp/webpanel_yamd.sd -x /bin/sh -- -c {shlex.quote(YAMD_CMD)}\n"
     f"[ -f {ALARM_CONF} ] && [ -f {ALARMD} ] && start-stop-daemon -S -b -m -p {ALARM_SD} -x /bin/sh -- {ALARMD}\n"
     "exit 0\n"
 )
@@ -1323,7 +1305,7 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
     def _drop_hook_if_unused(self):
         # Хук нужен, пока есть хоть что-то своё; иначе возвращаем rootkeeper.sh к исходному виду.
         self.adb.shell(
-            f"if [ ! -f {BOOT_CUSTOM} ] && [ ! -f {SOUND_CUSTOM} ] && [ ! -f {BOOT_ALWAYS} ] && [ ! -f {YAM_AUTOSTART} ] "
+            f"if [ ! -f {BOOT_CUSTOM} ] && [ ! -f {SOUND_CUSTOM} ] && [ ! -f {BOOT_ALWAYS} ] "
             f"&& [ ! -f {ALARM_CONF} ] && [ ! -f {HOSTS_CUSTOM} ]; then "
             f"[ -f {ROOTKEEPER} ] && sed -i '/{HOOK_MARK}/d' {ROOTKEEPER}; rm -f {BOOT_HOOK}; fi; true")
 
@@ -1391,9 +1373,6 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
             self._drop_hook_if_unused()
         return self.boot_status()
 
-    # ---------- YAM: менеджер пакетов ----------
-    _yam_port = None
-    _registry = (0, None)
 
     # ---------- что панель оставила на колонке ----------
     # ---------- блокировка аналитики ----------
@@ -1447,13 +1426,13 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
         cmd = "; ".join([
             f"grep -q ' {BOOT_TARGET} ' /proc/mounts && echo 1 || echo 0", q(BOOT_CUSTOM),
             f"grep -q ' {SOUND_TARGET} ' /proc/mounts && echo 1 || echo 0", q(SOUND_CUSTOM),
-            q(BOOT_ALWAYS), q(YAM_AUTOSTART), q(ALARMD),
+            q(BOOT_ALWAYS), "echo 0", q(ALARMD),
             f"cat {ALARM_CONF} 2>/dev/null | grep -c .",
             q(BOOT_ORIG), q(SOUND_ORIG), q(f"{ROOTKEEPER}.webpanel.bak"),
             f"grep -q '{HOOK_MARK}' {ROOTKEEPER} 2>/dev/null && echo 1 || echo 0",
             f"[ -d {WEB_DIR} ] && du -sk {WEB_DIR} | cut -f1 || echo 0",
             f"[ -d {ALARM_DIR} ] && du -sk {ALARM_DIR} | cut -f1 || echo 0",
-            q(YAMD),
+            "[ -x /data/yam/bin/yam ] && echo 1 || echo 0",
             f"grep -q ' {HOSTS_TARGET} ' /proc/mounts && echo 1 || echo 0", q(HOSTS_CUSTOM)])
         v = self.adb.shell(cmd, check=False)[0].split()
         v = (v + ["0"] * 17)[:17]
@@ -1463,7 +1442,6 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
             {"key": "boot", "name": "Своя заставка часов", "on": b[0] or b[1]},
             {"key": "sound", "name": "Свой звук запуска", "on": b[2] or b[3]},
             {"key": "always", "name": "Заставка при каждой загрузке", "on": b[4]},
-            {"key": "yamd", "name": "Автозапуск yamd", "on": b[5]},
             {"key": "privacy", "name": "Блокировка аналитики", "on": b[15] or b[16], "detail": "свой /etc/hosts"},
             {"key": "alarm", "name": "Будильник", "on": b[6], "detail": f"будильников: {n(v[7])}", "size_kb": n(v[13])},
             {"key": "backup", "name": "Копии оригиналов", "on": b[8] or b[9] or b[10],
@@ -1499,7 +1477,7 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
     # Что берём из /data/quasar/webpanel: только своё. Копии оригиналов не берём — на другой прошивке они
     # были бы чужими; при восстановлении они снимаются заново с этой колонки. Хук и скрипт будильника — тоже
     # не берём: ставим текущую версию из панели.
-    BACKUP_FILES = re.compile(r"(boot\.binscled\.zst|boot_sound\.wav|boot_every_time|yamd_autostart|hosts|"
+    BACKUP_FILES = re.compile(r"(boot\.binscled\.zst|boot_sound\.wav|boot_every_time|hosts|"
                               r"alarm/alarms\.conf|alarm/default\.wav|alarm/[su]_[0-9a-f]{10}\.wav)")
     BACKUP_LIMIT = 200 * 1024 * 1024
 
@@ -1567,12 +1545,6 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
             # файл из копии не ставим: в нём имя хоста той колонки — собираем заново из /etc/hosts этой
             self.privacy_set(True)
             report.append("блокировка аналитики")
-        if "yamd_autostart" in files:
-            if self.yam_status().get("installed"):
-                self.yam_autostart(True)
-                report.append("автозапуск yamd")
-            else:
-                report.append("автозапуск yamd пропущен: yam не установлен")
         if "alarm/alarms.conf" in files:
             with tempfile.TemporaryDirectory() as td:
                 self.adb.shell(f"mkdir -p {ALARM_DIR}")
@@ -1769,195 +1741,23 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
             raise AdbError("неизвестное действие")
         return {"ok": True}
 
-    def yam_status(self):
-        out, _, _ = self.adb.shell(
-            f"[ -x {YAMD} ] && echo installed; pidof yamd >/dev/null && echo running; "
-            f"awk '$4==\"0A\" && $2 ~ /:{YAM_PORT:04X}$/ {{f=1}} END{{if(f)print \"listening\"}}' "
-            f"/proc/net/tcp /proc/net/tcp6; [ -f {YAM_AUTOSTART} ] && grep -q '{HOOK_MARK}' {ROOTKEEPER} && echo autostart; true")
-        flags = set(out.split())
-        return {"installed": "installed" in flags, "running": "running" in flags and "listening" in flags,
-                "autostart": "autostart" in flags,
-                "web_url": f"http://{self.adb.serial.split(':')[0]}:{YAM_PORT}/" if self.adb.serial and ":" in self.adb.serial else None}
 
-    def yam_start(self):
-        if not self.yam_status()["installed"]:
-            raise AdbError("yam не установлен на колонке")
-        # Как в docs/DEPLOYMENT.md, только через start-stop-daemon: nohup adbd всё равно прибивает.
-        self.detach("yamd", YAMD_CMD)
-        for _ in range(20):
-            time.sleep(0.5)
-            if self.yam_status()["running"]:
-                return self.yam_status()
-        out, _, _ = self.adb.shell(f"tail -5 {YAM_DIR}/yamd.log", check=False)
-        raise AdbError("yamd не поднял порт 8099. Лог: " + out.strip()[-400:])
 
     # ---------- версия yamd ----------
     # Своей версии yamd не сообщает (нет ни --version, ни API), поэтому узнаём её по sha256 бинарника:
     # ищем эту сумму в SHA256SUMS релизов yam на GitHub. Список релизов кэшируется на час, суммы — навсегда.
-    _yam_releases = (0, [])
-    _yam_sums = {}
-    YAM_ASSET = "yamd-aarch64-linux-musl"
 
-    def _yam_release_list(self, refresh=False):
-        at, rels = self._yam_releases
-        if refresh or not rels or time.time() - at > 3600:
-            req = urllib.request.Request("https://api.github.com/repos/nyakokitsu/yam/releases?per_page=30",
-                                         headers={"User-Agent": "webpanel", "Accept": "application/vnd.github+json"})
-            with urllib.request.urlopen(req, timeout=20) as r:
-                rels = [x for x in json.load(r) if not x.get("draft") and not x.get("prerelease")]
-            self._yam_releases = (time.time(), rels)
-        return rels
 
-    def _yam_release_sha(self, rel):
-        tag = rel.get("tag_name")
-        if tag not in self._yam_sums:
-            url = next((a["browser_download_url"] for a in rel.get("assets", []) if a["name"] == "SHA256SUMS"), None)
-            sha = None
-            if url:
-                with urllib.request.urlopen(url, timeout=20) as r:
-                    sha = next((ln.split()[0] for ln in r.read().decode().splitlines()
-                                if ln.split()[-1:] == [self.YAM_ASSET]), None)
-            self._yam_sums[tag] = sha
-        return self._yam_sums[tag]
 
-    def yam_version(self, refresh=False):
-        out, _, _ = self.adb.shell(f"[ -f {YAMD} ] && sha256sum {YAMD}; true", check=False, timeout=30)
-        sha = (strip_ansi(out).split() or [None])[0]
-        if not sha:
-            return {"installed": None, "sha": None}
-        try:
-            rels = self._yam_release_list(refresh)
-        except (OSError, ValueError) as e:
-            return {"sha": sha, "installed": None, "latest": None, "error": f"GitHub недоступен: {e}"}
-        if not rels:
-            return {"sha": sha, "installed": None, "latest": None}
-        latest = rels[0]
-        installed = None
-        for rel in rels[:15]:                  # дальше в историю не ищем — это уже очень старая сборка
-            try:
-                if self._yam_release_sha(rel) == sha:
-                    installed = rel
-                    break
-            except OSError:
-                break
-        return {"sha": sha[:12], "installed": installed and installed["tag_name"],
-                "installed_date": installed and (installed.get("published_at") or "")[:10],
-                "latest": latest["tag_name"], "latest_date": (latest.get("published_at") or "")[:10],
-                "latest_url": latest.get("html_url"),
-                # сборка не нашлась среди релизов — не предлагаем «обновить», вдруг это своя сборка
-                "update": bool(installed) and installed["tag_name"] != latest["tag_name"]}
 
-    def yam_install_daemon(self):
-        """Как install.sh из репозитория yam: последний релиз, проверка SHA256SUMS, yamd на колонку, запуск."""
-        api = "https://api.github.com/repos/nyakokitsu/yam/releases/latest"
-        with urllib.request.urlopen(urllib.request.Request(api, headers={"User-Agent": "webpanel"}), timeout=20) as r:
-            rel = json.load(r)
-        assets = {a["name"]: a["browser_download_url"] for a in rel.get("assets", [])}
-        if "yamd-aarch64-linux-musl" not in assets or "SHA256SUMS" not in assets:
-            raise AdbError("в последнем релизе yam нет yamd-aarch64-linux-musl или SHA256SUMS")
-        with urllib.request.urlopen(assets["SHA256SUMS"], timeout=30) as r:
-            sums = r.read().decode()
-        expected = next((ln.split()[0] for ln in sums.splitlines()
-                         if ln.split()[-1:] == ["yamd-aarch64-linux-musl"]), None)
-        with urllib.request.urlopen(assets["yamd-aarch64-linux-musl"], timeout=300) as r:
-            blob = r.read()
-        if not expected or hashlib.sha256(blob).hexdigest() != expected:
-            raise AdbError("контрольная сумма yamd не совпала с SHA256SUMS")
-        with tempfile.TemporaryDirectory() as td:
-            f = Path(td) / "yamd"
-            f.write_bytes(blob)
-            self.adb.shell(f"mkdir -p {YAM_DIR}/bin {YAM_DIR}/data")
-            self.adb.push(f, f"{YAMD}.new", timeout=300)
-        self.adb.shell(f"chmod 755 {YAMD}.new; pidof yamd >/dev/null && kill $(pidof yamd); sleep 1; mv {YAMD}.new {YAMD}")
-        st = self.yam_start()
-        return {**st, "version": rel.get("tag_name")}
 
-    def yam_autostart(self, enabled):
-        if enabled:
-            if not self.yam_status()["installed"]:
-                raise AdbError("yam не установлен на колонке")
-            self._ensure_hook()
-            self.adb.shell(f"mkdir -p {WEB_DIR}; touch {YAM_AUTOSTART}")
-        else:
-            self.adb.shell(f"rm -f {YAM_AUTOSTART}")
-            self._drop_hook_if_unused()
-        return self.yam_status()
 
-    def _yam(self, method, path, body=None, headers=None, timeout=60):
-        """Запрос к API yamd через adb forward (переподнимаем проброс, если adb переподключился)."""
-        for attempt in (1, 2):
-            if self._yam_port is None:
-                self._yam_port = self.adb.forward(YAM_PORT)
-            req = urllib.request.Request(f"http://127.0.0.1:{self._yam_port}{path}", data=body,
-                                         method=method, headers=headers or {})
-            try:
-                with urllib.request.urlopen(req, timeout=timeout) as r:
-                    data = r.read()
-                    ctype = r.headers.get("Content-Type", "")
-                    return json.loads(data) if "json" in ctype and data else data.decode("utf-8", "replace")
-            except urllib.error.HTTPError as e:
-                raise AdbError(f"yamd: {e.read().decode('utf-8', 'replace').strip() or e.reason}")
-            except (urllib.error.URLError, ConnectionError, OSError) as e:
-                self._yam_port = None
-                if attempt == 2:
-                    raise AdbError(f"yamd недоступен ({e}). Запущен ли он?")
 
-    def yam_registry(self, refresh=False):
-        ts, data = self._registry
-        if refresh or data is None or time.time() - ts > 600:
-            with urllib.request.urlopen(YAM_REGISTRY, timeout=20) as r:
-                data = json.load(r)
-            self._registry = (time.time(), data)
-        return data
 
-    def yam_plugins(self):
-        return self._yam("GET", "/api/plugins")
 
-    def yam_install(self, pkg_id, version):
-        entry = next((p for p in self.yam_registry()["packages"]
-                      if p["id"] == pkg_id and p["version"] == version), None)
-        if not entry:
-            raise AdbError("нет такого пакета в реестре")
-        # Качаем на компьютере и сверяем sha256 сами: колонке не нужен доступ к GitHub.
-        with urllib.request.urlopen(entry["url"], timeout=120) as r:
-            blob = r.read()
-        if hashlib.sha256(blob).hexdigest() != entry["sha256"]:
-            raise AdbError("контрольная сумма пакета не совпала с реестром")
-        boundary = "webpanel" + os.urandom(8).hex()
-        body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"package\"; filename=\"{pkg_id}.yap\"\r\n"
-                f"Content-Type: application/octet-stream\r\n\r\n").encode() + blob + f"\r\n--{boundary}--\r\n".encode()
-        res = self._yam("POST", "/api/plugins", body, {"Content-Type": f"multipart/form-data; boundary={boundary}"},
-                        timeout=300)
-        self.adb.shell(YAM_FIX_EXEC, check=False)
-        return res
 
-    def yam_action(self, action, pkg_id):
-        if not re.fullmatch(r"[A-Za-z0-9._-]+", pkg_id or ""):
-            raise AdbError("плохой id пакета")
-        method, path = {"remove": ("DELETE", ""), "toggle": ("POST", "/toggle"),
-                        "run": ("POST", "/invoke"), "stop": ("POST", "/stop")}[action]
-        body, headers = (b"{}", {"Content-Type": "application/json"}) if action == "run" else (None, {})
-        if action == "run":
-            self.adb.shell(YAM_FIX_EXEC, check=False)
-        try:
-            self._yam(method, f"/api/plugins/{pkg_id}{path}", body, headers)
-        except AdbError as e:
-            if action != "run" or "package launch mode does not support this command" not in str(e):
-                raise
-            self._yam("POST", f"/api/plugins/{pkg_id}/service/start")
-        return {"ok": True}
 
-    def yam_logs(self, pkg_id):
-        if not re.fullmatch(r"[A-Za-z0-9._-]+", pkg_id or ""):
-            raise AdbError("плохой id пакета")
-        return {"text": strip_ansi(self._yam("GET", f"/api/plugins/{pkg_id}/logs") or "")}
 
-    def yam_settings(self, data=None):
-        s = self._yam("GET", "/api/settings")
-        if data and "allow_plugin_binaries" in data:
-            s["allow_plugin_binaries"] = bool(data["allow_plugin_binaries"])
-            self._yam("PUT", "/api/settings", json.dumps(s).encode(), {"Content-Type": "application/json"})
-        return {"allow_plugin_binaries": s.get("allow_plugin_binaries", False)}
 
     # ---------- музыка: аккаунт Яндекса и Glagol ----------
     _bt_pos = None   # (позиция, с; когда измерена; название трека)
@@ -2381,7 +2181,7 @@ class Terminal:
         self.info = f"/tmp/webpanel_term_{self.sid}"
         cols, rows = max(20, min(400, cols)), max(5, min(200, rows))
         cmd = (f"echo $$ $(tty) > {self.info}; stty rows {rows} cols {cols} 2>/dev/null; "
-               f"export TERM=xterm-256color PS1={shlex.quote(self.PS1)}; {YAM_PATH}cd /data 2>/dev/null; exec sh")
+               f"export TERM=xterm-256color PS1={shlex.quote(self.PS1)}; export PATH=\"$PATH:/data/yam/bin\" YAM_PLATFORM=pickle YAM_PROFILES=/data/yam/platforms YAM_ROOT=/data/yam; cd /data 2>/dev/null; exec sh")
         self.proc = subprocess.Popen(adb._base() + ["shell", cmd], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, bufsize=0)
 
@@ -2634,7 +2434,6 @@ class Handler(BaseHTTPRequestHandler):
             "/api/leds/live": p.leds.get,
             "/api/display": p.display_status,
             "/api/ring/frames": lambda: p.ring_frames(q.get("name", "")),
-            "/api/yam/status": p.yam_status,
             "/api/music": p.music,
             "/api/music/info": lambda: p.music_info(q.get("id", "")),
             "/api/music/lyrics": lambda: p.music_lyrics(q.get("id", "")) if q.get("id") else
@@ -2644,11 +2443,6 @@ class Handler(BaseHTTPRequestHandler):
             "/api/music/artist": lambda: (p._need_login(), p.ymusic.artist(q.get("id", "")))[1],
             "/api/auth": lambda: {**p.auth.info(), "oauth_url": glagol.OAUTH_URL},
             "/api/auth/qr": p.auth_qr_status,
-            "/api/yam/registry": lambda: p.yam_registry(q.get("refresh") == "1"),
-            "/api/yam/plugins": p.yam_plugins,
-            "/api/yam/logs": lambda: p.yam_logs(q.get("id", "")),
-            "/api/yam/settings": p.yam_settings,
-            "/api/yam/version": lambda: p.yam_version(q.get("refresh") == "1"),
             "/api/alarms": p.alarms,
             "/api/footprint": p.footprint,
             "/api/privacy": p.privacy_status,
@@ -2725,8 +2519,6 @@ class Handler(BaseHTTPRequestHandler):
             "/api/boot/sound/reset": p.boot_sound_reset,
             "/api/boot/sound/play": lambda: p.boot_sound_play(d.get("which", "default")),
             "/api/clock/boot/always": lambda: p.boot_always(bool(d["enabled"])),
-            "/api/yam/start": p.yam_start,
-            "/api/yam/install-daemon": lambda: p.yam_install_daemon(**({"drop_backups": True} if d.get("drop_backups") else {})),
             "/api/display": lambda: p.display_set(d),
             "/api/display/stop": p.display_stop,
             "/api/ring/reset": p.ring_reset,
@@ -2737,10 +2529,6 @@ class Handler(BaseHTTPRequestHandler):
             "/api/auth/qr": p.auth_qr_start,
             "/api/auth/oauth": lambda: p.auth_oauth(d["url"]),
             "/api/auth/logout": p.auth_logout,
-            "/api/yam/autostart": lambda: p.yam_autostart(bool(d["enabled"])),
-            "/api/yam/install": lambda: p.yam_install(d["id"], d["version"]),
-            "/api/yam/action": lambda: p.yam_action(d["action"], d["id"]),
-            "/api/yam/settings": lambda: p.yam_settings(d),
             "/api/bt": lambda: p.bt_action(d),
             "/api/system": lambda: p.system(d["action"]),
             "/api/fs/write": lambda: p.fs_write(d["path"], d["text"]),
@@ -2768,7 +2556,7 @@ class PanelUpdater:
     """Проверка новых релизов панели на GitHub и обновление — в зависимости от того, как панель установлена:
     zip (Windows-сборка, Download ZIP) — скачать релиз и заменить файлы панели; git — git pull --ff-only;
     docker — только подсказать команду (образ изнутри не обновить)."""
-    FILES = ("server.py", "access.py", "glagol.py", "profiles.py", "managed_yam.py", "multi.py", "speakers.example.json", "VERSION", "LICENSE", "README.md", "CONTRIBUTION.md", "start.bat", "start.sh", "start.command",
+    FILES = ("server.py", "access.py", "glagol.py", "profiles.py", "multi.py", "speakers.example.json", "VERSION", "LICENSE", "README.md", "CONTRIBUTION.md", "start.bat", "start.sh", "start.command",
              "Dockerfile", "docker-compose.yml")
     DIRS = ("static", "device")
     OBSOLETE = ("3d", "tools", "docs")  # папки прежних версий: модель переехала в static/models, остальное не нужно
@@ -2840,7 +2628,7 @@ class PanelUpdater:
             self.lock.release()
 
     def repair_missing(self):
-        """Обновление из архива копирует только файлы из списка старой версии: новых модулей (managed_yam.py
+        """Обновление из архива копирует только файлы из списка старой версии: новых модулей (profiles.py
         после 0.1.3) после него нет. Докачиваем исходники своей же версии, пока профили их не импортировали."""
         missing = [f for f in self.FILES if f.endswith(".py") and not (ROOT / f).exists()]
         if not missing or self.kind() != "zip":

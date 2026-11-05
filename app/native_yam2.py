@@ -117,7 +117,7 @@ class Yam2:
         exists=self.binary.is_file();record=load_json(self.record)
         return dict(installed=exists,version=record.get('version'),root=str(self.root),platform='pickle',
                     manager='YAM v2 CLI',daemon=False,package_format='.yampkg',services_supervised=False,
-                    legacy_preserved=Path('/data/quazar/yam').is_dir(),registry_default=REGISTRY_URL,
+                    registry_default=REGISTRY_URL,
                     events=list(self.events),capabilities=['list','install','remove','files','which','search','info','plan','registry','doctor','repair','update','entware','service-list'])
 
     def packages(self):
@@ -185,7 +185,7 @@ class Yam2:
                 wrapper.write_text('#!/bin/sh\nexport YAM_PLATFORM=pickle\nexport YAM_PROFILES='+shlex.quote(str(self.profiles))+'\nexport YAM_ROOT='+shlex.quote(str(self.root))+'\nexec '+shlex.quote(str(self.binary))+' "$@"\n');wrapper.chmod(0o755)
                 atomic_json(staged/'.darkls-yam.json',dict(version=release['version'],tag=release['tag'],sha256=expected,installed=time.time()))
                 os.rename(staged,self.root)
-            self.note('install',True,'YAM '+release['version']+' установлен. Старый yamd и .yap сохранены отдельно.')
+            self.note('install',True,'YAM '+release['version']+' установлен. Менеджер готов к работе.')
             return self.info()
 
     def _update(self):
@@ -267,12 +267,14 @@ class Yam2:
 
 def install(module,base):
     manager=Yam2(base)
+    from native_retirement import Retirement
+    retirement=Retirement(base)
     old_get,old_post=module.Handler.do_GET,module.Handler.do_POST
     def get(self):
         path=urlsplit(self.path).path
         if not path.startswith('/api/yam2/'):return old_get(self)
         if self._guard(path):return
-        routes={'/api/yam2/status':manager.info,'/api/yam2/packages':manager.packages,
+        routes={'/api/yam2/retirement':retirement.info,'/api/yam2/status':manager.info,'/api/yam2/packages':manager.packages,
                 '/api/yam2/registries':manager.registries,'/api/yam2/services':manager.services,
                 '/api/yam2/latest':lambda:{k:v for k,v in manager.latest(True).items() if k!='assets'}}
         if path not in routes:return self._send(404,dict(error='Неизвестный API YAM v2'))
@@ -293,6 +295,12 @@ def install(module,base):
             data=self._json()
             if not isinstance(data,dict):raise ValueError('Ожидается JSON-объект')
         except ValueError as exc:return self._send(400,dict(error=str(exc)))
+        if path=='/api/yam2/retire':
+            def retire():
+                with manager.mutation():
+                    manager.command(['list']) # Require a working replacement before stopping old apps.
+                    return retirement.retire()
+            return self._handle(retire)
         if path=='/api/yam2/bootstrap':return self._handle(manager.install_latest)
         if path=='/api/yam2/action':return self._handle(lambda:manager.action(data))
         return self._send(404,dict(error='Неизвестный API YAM v2'))

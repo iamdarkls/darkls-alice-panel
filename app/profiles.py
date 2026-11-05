@@ -137,17 +137,8 @@ def install(s, model='lite2', auto=False):
             setattr(P, method, unsupported)
     # Never connect the Light 2 rootkeeper hook to a different model.
     P._ensure_hook = unsupported
-    for method in ('yam_install_daemon', 'yam_update_daemon', 'yam_autostart'):
-        if hasattr(P, method):
-            setattr(P, method, unsupported)
     P.boot_status = lambda self: dict(supported=False, custom=False, mounted=False, sound_supported=False,
                                     sound_custom=False, sound_mounted=False, hook=False, no_boot_sound=True, always=False)
-
-    # Existing community YAM installations on the new profiles use this layout.
-    old = s.YAM_DIR
-    for name, value in list(vars(s).items()):
-        if name.startswith('YAM') and isinstance(value, str):
-            setattr(s, name, value.replace(old, '/data/local/yam'))
 
     def patterns(self):
         if model != 'mini3pro':
@@ -238,10 +229,3 @@ def install(s, model='lite2', auto=False):
         return {'ok': True}
     P.stop_pattern = stop
 
-    if model in ("station2", "mini3pro"):
-        try:
-            import managed_yam
-        except ImportError:     # архив обновлён кодом 0.1.3, а он новые модули не копирует
-            print('Нет managed_yam.py — обновление yamd из панели для этой модели недоступно')
-        else:
-            managed_yam.install(s)
