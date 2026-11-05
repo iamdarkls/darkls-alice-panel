@@ -125,7 +125,7 @@ class Http(unittest.TestCase):
  def test_real_authenticated_routes_restore_and_csrf(self):
   with tempfile.TemporaryDirectory() as td:
    base=Path(td);(base/'data').mkdir();(base/'releases/current').mkdir(parents=True)
-   (base/'releases/current/DARKLS_VERSION').write_text('0.3.0');u.point(base,'current',base/'releases/current')
+   (base/'releases/current/DARKLS_VERSION').write_text((ROOT/'app/DARKLS_VERSION').read_text());(base/'releases/current/native_apps.py').write_text('# fixture: application host supported');u.point(base,'current',base/'releases/current')
    u.atomic_json(base/'data/.panel_settings.json',dict(volume=5))
    access.PanelAccess(base/'data/.panel_auth.json').set_password(None,'test-password-only','test')
    sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1];sock.close()
@@ -141,6 +141,8 @@ class Http(unittest.TestCase):
      except OSError:time.sleep(.1)
     with self.assertRaises(urllib.error.HTTPError) as e:req('/api/native/voice')
     self.assertEqual(e.exception.code,401)
+    with self.assertRaises(urllib.error.HTTPError) as e:req('/api/apps')
+    self.assertEqual(e.exception.code,401)
     with self.assertRaises(urllib.error.HTTPError) as e:req('/api/yam2/status')
     self.assertEqual(e.exception.code,401)
     req('/api/panel-auth/login',dict(password='test-password-only')).close()
@@ -149,6 +151,10 @@ class Http(unittest.TestCase):
     self.assertEqual(e.exception.code,410)
     health=json.load(req('/api/darkls/health'));self.assertIn('device',health);self.assertNotIn('yam',health)
     self.assertIsInstance(json.load(req('/api/darkls/sensors')),list)
+    self.assertIn('packages',json.load(req('/api/apps')))
+    with self.assertRaises(urllib.error.HTTPError) as e:req('/api/apps/action',{'action':'recheck'},{'Origin':'https://foreign.test'})
+    self.assertEqual(e.exception.code,403)
+    req('/api/apps/action',{'action':'recheck'}).close()
     with self.assertRaises(urllib.error.HTTPError) as e:req('/api/yam2/action',{'action':'doctor'},{'Origin':'https://foreign.test'})
     self.assertEqual(e.exception.code,403)
     self.assertIn('capabilities',json.load(req('/api/yam2/status')))

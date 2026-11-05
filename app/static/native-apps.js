@@ -1,0 +1,30 @@
+(() => {
+'use strict';const $=id=>document.getElementById(id);if(!$('tab-apps'))return;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const labels={running:'Процесс запущен',stopped:'Остановлена',completed:'Завершена',failed:'Ошибка',waiting:'Ожидание',backoff:'Пауза перед повтором'};
+let busy=false,loading=false,logService=null;
+async function api(path='',body){const r=await fetch('/api/apps'+path,{cache:'no-store',signal:AbortSignal.timeout(90000),...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});const v=await r.json();if(!r.ok)throw Error(v.error||r.statusText);return v;}
+function render(v){
+ const packages=v.packages||[];$('home-count').textContent=packages.length;
+ $('home-packages').innerHTML=packages.length?packages.slice(0,4).map(p=>`<div class="summary-row"><a href="#apps">${esc(p.name)}</a><span>${esc(p.version)} · ${p.services.filter(s=>s.status==='running').length} запущено</span></div>`).join(''):'<p class="hint">Приложений пока нет. <a href="#yam">Установить через YAM</a></p>';
+ $('apps-list').innerHTML=packages.length?packages.map(p=>{
+  let web='';if(p.web){const url=new URL(location.href);url.protocol='http:';url.port=p.web.port;url.pathname=p.web.path;url.search='';url.hash='';web=`<a class="btn" href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">Открыть интерфейс ↗</a>`;}
+  return `<article class="card"><div class="card-head"><h2>${esc(p.name)}</h2><span class="badge">${esc(p.version)}</span></div><p>${esc(p.description||'Описание не задано. Его можно добавить ниже.')}</p>${web}
+${p.services.length?p.services.map(s=>`<div class="card"><div class="card-head"><b>${esc(s.name)}</b><span class="badge">${esc(labels[s.status]||s.status)}</span></div><p class="hint">${esc(s.detail||'')}${s.pid?' · PID '+s.pid:''}${s.exit!==null&&s.exit!==undefined?' · код выхода '+s.exit:''} · перезапуск: ${esc(s.restart||'never')}${s.oneshot?' · разовая задача':''}</p><div class="row"><button class="btn sm" data-app-action="start" data-service="${esc(s.id)}" ${s.status==='running'?'disabled':''}>Запустить</button><button class="btn sm" data-app-action="stop" data-service="${esc(s.id)}">Остановить</button><button class="btn sm" data-app-action="restart" data-service="${esc(s.id)}">Перезапустить</button><button class="btn sm" data-app-log="${esc(s.id)}">Журнал</button></div><label class="toggle"><span>Автозапуск после загрузки колонки</span><input type="checkbox" data-app-auto="${esc(s.id)}" ${s.autostart?'checked':''}></label></div>`).join(''):'<p class="hint">В пакете нет деклараций служб. Запуск вручную возможен через консоль.</p>'}
+<details><summary>Описание и веб-интерфейс</summary><form data-app-meta="${esc(p.name)}"><label>Описание<input class="field" name="description" maxlength="2000" value="${esc(p.description)}"></label><div class="row"><label>Порт HTTP<input class="field" name="port" type="number" min="1024" max="65535" placeholder="Не задан" value="${esc(p.web?.port||'')}"></label><label>Путь<input class="field" name="path" placeholder="/" value="${esc(p.web?.path||'/')}"></label><button class="btn" type="submit">Сохранить</button></div><p class="hint">Укажи фактический порт приложения. Пустой порт убирает ссылку. Порт не определяется автоматически и не открывается в роутере.</p></form></details></article>`;
+ }).join(''):'<section class="card"><h2>Пакетов пока нет</h2><p class="hint">Установи приложение с декларацией службы через YAM v2.</p><a class="btn" href="#yam">Открыть YAM</a></section>';
+ const report=v.recovery||{};$('apps-boot-badge').textContent=v.recovery_pending?'Проверка ожидается':report.checked?(report.ok?'Восстановлено':'Есть замечания'):'Нет отчёта';
+ $('apps-boot-info').textContent=(report.checked?'Последняя проверка: '+new Date(report.checked*1000).toLocaleString('ru-RU'):'Проверка начнётся после запуска хоста.')+(v.paused?' Службы приостановлены на время изменения пакетов.':'');
+ $('apps-boot-checks').innerHTML=(report.checks||[]).map(c=>`<div class="summary-row"><b>${c.ok?'✓':'!'} ${esc(c.name)}</b><span>${esc(c.detail)}</span></div>`).join('');
+ if(v.error)$('apps-message').textContent=v.error;
+}
+async function logs(){if(!logService)return;const v=await api('/log?service='+encodeURIComponent(logService));$('apps-log-title').textContent='Журнал: '+logService;$('apps-log').textContent=v.text;}
+async function load(){if(loading||busy)return;loading=true;try{render(await api());if(location.hash==='#apps')await logs();}catch(e){$('apps-message').textContent=e.message;}finally{loading=false;}}
+async function act(data){if(busy)return;busy=true;$('apps-message').textContent='Выполняется…';try{await api('/action',data);$('apps-message').textContent='Готово';}catch(e){$('apps-message').textContent=e.message;}finally{busy=false;await load();}}
+$('apps-list').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.appAction)act({action:b.dataset.appAction,service:b.dataset.service});if(b.dataset.appLog){logService=b.dataset.appLog;logs().catch(e=>$('apps-message').textContent=e.message);}});
+$('apps-list').addEventListener('change',e=>{if(e.target.dataset.appAuto)act({action:e.target.checked?'enable':'disable',service:e.target.dataset.appAuto});});
+$('apps-list').addEventListener('submit',e=>{const form=e.target;if(!form.dataset.appMeta)return;e.preventDefault();const data=new FormData(form);act({action:'metadata',package:form.dataset.appMeta,description:data.get('description'),port:data.get('port')?Number(data.get('port')):null,path:data.get('path')||'/'});});
+$('apps-refresh').onclick=load;$('apps-recheck').onclick=()=>act({action:'recheck'});
+addEventListener('hashchange',()=>{if(['#apps','#home'].includes(location.hash))load();});addEventListener('darkls:authchanged',load);
+setInterval(()=>{if(!document.hidden&&['#apps','#home',''].includes(location.hash)&&!$('apps-list').contains(document.activeElement)&&!$('apps-list').querySelector('details[open]'))load();},5000);load();
+})();

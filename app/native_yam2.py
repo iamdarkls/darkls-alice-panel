@@ -1,4 +1,4 @@
-"""Native YAM v2 CLI adapter. Legacy yamd remains an independent optional runtime."""
+"""Native YAM v2 CLI adapter and coordinated application mutations."""
 import base64
 import contextlib
 import fcntl
@@ -86,14 +86,15 @@ class Yam2:
         return text
 
     @contextlib.contextmanager
-    def mutation(self):
+    def mutation(self,pause=False):
         if not self.lock.acquire(blocking=False):raise ValueError('Другая операция YAM уже выполняется')
         self.base.mkdir(parents=True,exist_ok=True)
         try:
             with (self.base/'yam2.lock').open('a') as lock:
                 try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
                 except BlockingIOError as exc:raise ValueError('YAM занят другой операцией панели') from exc
-                yield
+                host=getattr(self,'app_host',None)
+                with host.pause() if pause and host else contextlib.nullcontext():yield
         finally:self.lock.release()
 
     def note(self,action,ok,message):
@@ -149,7 +150,7 @@ class Yam2:
         return dest
 
     def install_latest(self):
-        with self.mutation():
+        with self.mutation(pause=True):
             if os.uname().machine!='aarch64':raise ValueError('Установка поддерживается на aarch64')
             if self.binary.is_file():return self._update()
             if self.root.is_symlink():raise ValueError('Корень YAM не должен быть символьной ссылкой')
@@ -232,7 +233,7 @@ class Yam2:
         if action=='entware':
             status=self.command(['entware','status']).strip();return dict(status=status,packages=self.command(['entware','list']) if status=='available' else '')
         if action not in ('install','remove','repair','registry-add','registry-remove','official-registry','update'):raise ValueError('Неизвестное действие YAM')
-        with self.mutation():
+        with self.mutation(pause=action in ('install','remove','update','repair')):
             if action=='update':return self._update()
             if action=='install':
                 spec=package_spec(data.get('name'));args=prefix+['install',spec]
@@ -258,7 +259,7 @@ class Yam2:
         if not blob or len(blob)>MAX_PACKAGE:raise ValueError('Пакет .yampkg должен быть не больше 32 МБ')
         # Format, path safety, payload hashes, compatibility and dependency rules are validated by YAM itself.
         if blob[:4]!=b'\x28\xb5\x2f\xfd':raise ValueError('Нужен .yampkg (tar.zst). Старый .yap сюда не подходит.')
-        with self.mutation(),tempfile.TemporaryDirectory(prefix='yam-package-',dir='/tmp') as td:
+        with self.mutation(pause=True),tempfile.TemporaryDirectory(prefix='yam-package-',dir='/tmp') as td:
             path=Path(td)/'upload.yampkg';path.write_bytes(blob)
             args=['install',str(path)]+(['--yes'] if allow else [])
             report=self.command(args,timeout=240);self.note('upload',True,report)
@@ -305,3 +306,5 @@ def install(module,base):
         if path=='/api/yam2/action':return self._handle(lambda:manager.action(data))
         return self._send(404,dict(error='Неизвестный API YAM v2'))
     module.Handler.do_GET,module.Handler.do_POST=get,post
+    import native_apps
+    native_apps.install(module,manager,base)

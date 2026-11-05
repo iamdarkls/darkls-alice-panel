@@ -23,7 +23,6 @@ async function refresh(){
   const results=await Promise.allSettled([api('packages'),api('registries')]);
   if(results[0].status==='fulfilled'){
     const packages=results[0].value;$('y2-count').textContent=packages.length;$('home-count').textContent=packages.length;
-    $('home-packages').innerHTML=packages.length?packages.slice(0,4).map(p=>`<div class="summary-row"><strong>${esc(p.name)}</strong><span>${esc(p.version)}</span></div>`).join(''):'<p class="hint">Пакетов пока нет. <a href="#yam">Открыть YAM</a></p>';
     $('y2-packages').innerHTML=packages.length?packages.map(p=>`<article class="card package-item"><div><h3>${esc(p.name)}</h3><p>${esc(p.version)} · ${esc(p.target)}</p></div><div class="row"><button class="btn sm" data-y2-files="${esc(p.name)}">Файлы</button><button class="btn sm danger" data-y2-remove="${esc(p.name)}">Удалить</button></div></article>`).join(''):'<p class="hint">Пакетов .yampkg пока нет.</p>';
   }else{$('y2-packages').textContent=results[0].reason.message;}
   if(results[1].status==='fulfilled'){

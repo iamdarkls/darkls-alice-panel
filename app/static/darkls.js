@@ -1,12 +1,12 @@
 (() => {
 'use strict';const $=s=>document.querySelector(s);
 let loading=false;
-if(['#packages','#apps'].includes(location.hash))location.replace('#yam');
+if(['#packages'].includes(location.hash))location.replace('#yam');
 function toast(message){const el=$('#darkls-toast');el.textContent=message;el.hidden=false;setTimeout(()=>el.hidden=true,8000);}
 async function api(name){const r=await fetch('/api/darkls/'+name,{cache:'no-store',signal:AbortSignal.timeout(12000)});const v=await r.json();if(r.status===401){if(!$('#login-dialog').open)$('#login-dialog').showModal();throw Error('Войди в панель');}if(!r.ok)throw Error(v.error||r.statusText);return v;}
 function showView(){
  const tab=location.hash.slice(1)||'home';for(const el of document.querySelectorAll('[data-view]'))el.classList.toggle('active',el.dataset.view===tab);
- $('#breadcrumb').textContent={yam:'YAM v2',home:'Главная',diagnostics:'Диагностика',updates:'Обновления панели',backups:'Резервные копии',chatgpt:'ChatGPT'}[tab]||tab;
+ $('#breadcrumb').textContent={apps:'Приложения',yam:'YAM v2',home:'Главная',diagnostics:'Диагностика',updates:'Обновления панели',backups:'Резервные копии',chatgpt:'ChatGPT'}[tab]||tab;
  $('.sidebar').classList.remove('open');$('#menu-button').setAttribute('aria-expanded','false');
 }
 addEventListener('hashchange',showView);showView();

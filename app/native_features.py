@@ -263,6 +263,13 @@ class Maintenance:
         import native_yam2
         yam=native_yam2.Yam2(self.base)
         checks.append(dict(name='YAM v2',status='ok' if yam.binary.is_file() else 'warn',detail='CLI установлен' if yam.binary.is_file() else 'Установи YAM в разделе YAM v2'))
+        try:
+            from yam_host import Client
+            apps=Client(self.base).request(dict(op='status'))
+            selected=[s for p in apps['packages'] for s in p['services'] if s['autostart']]
+            failed=[s['id'] for s in selected if s['status'] not in ('running','completed')]
+            checks.append(dict(name='Приложения YAM',status='warn' if failed else 'ok',detail='Не восстановлены: '+', '.join(failed) if failed else 'Хост доступен; автозапуск: '+str(len(selected))))
+        except (OSError,ValueError):checks.append(dict(name='Приложения YAM',status='warn',detail='Хост приложений недоступен'))
         services = {}
         for path in Path('/proc').glob('[0-9]*/cmdline'):
             try:

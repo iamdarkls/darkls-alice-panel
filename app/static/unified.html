@@ -635,6 +635,7 @@
       <div class="nav-group" role="presentation">Колонка</div>
       <a href="#alarm" data-tab="alarm" data-view="alarm"><svg width="20" height="20" aria-hidden="true"><use href="#i-alarm"/></svg>Будильник</a>
       <a href="#boot" data-tab="boot" data-view="boot"><svg width="20" height="20" aria-hidden="true"><use href="#i-power"/></svg>Запуск</a>
+      <a href="#apps" data-tab="apps" data-view="apps"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>Приложения</a>
       <a href="#yam" data-tab="yam" data-view="yam"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>YAM v2</a>
       <a href="#files" data-tab="files" data-view="files"><svg width="20" height="20" aria-hidden="true"><use href="#i-folder"/></svg>Файлы</a>
       <a href="#console" data-tab="console" data-view="console"><svg width="20" height="20" aria-hidden="true"><use href="#i-term"/></svg>Консоль</a>
@@ -661,8 +662,17 @@
   <section class="card"><div class="card-head"><h2>YAM v2</h2><span class="badge" id="y2-home-version">Проверяем…</span></div><p class="hint">Актуальный менеджер пакетов .yampkg работает прямо на колонке.</p><a class="btn primary" href="#yam">Открыть YAM v2</a></section>
   <section class="card"><div class="card-head"><h2>Локальный доступ</h2><span class="status-dot" id="adb-dot"></span></div><strong class="native-state" id="adb-state">Проверка…</strong><p class="hint" id="adb-detail">Панель работает на колонке</p><a class="btn" href="#console">Консоль</a></section>
   <section class="card"><div class="card-head"><h2>Управление колонкой</h2><span class="meta" id="hero-platform">Мини 3 Про · Pickle</span></div><div class="row"><a class="btn primary" href="#overview">Открыть обзор</a><a class="btn" href="#player">Открыть плеер</a><a class="btn" href="#files">Файлы</a><a class="btn" href="#charts">Графики</a><a class="btn" href="#settings">Настройки</a></div><p class="hint">Все разделы открываются здесь. Управление идёт локально; ПК, ADB и yamd не требуются.</p></section>
-  <div class="cols"><article class="card"><div class="card-head"><h2>Пакеты YAM <span class="badge" id="home-count">—</span></h2><a class="btn sm" href="#yam">Управлять</a></div><div id="home-packages" class="placeholder">Получаем список…</div></article><article class="card"><div class="card-head"><h2>Датчики</h2><span class="meta">Данные ядра · sysfs</span></div><div id="sensors">Получаем данные…</div><p class="hint">Только датчики, обнаруженные на колонке.</p></article></div>
+  <div class="cols"><article class="card"><div class="card-head"><h2>Пакеты YAM <span class="badge" id="home-count">—</span></h2><a class="btn sm" href="#apps">Управлять</a></div><div id="home-packages" class="placeholder">Получаем список…</div></article><article class="card"><div class="card-head"><h2>Датчики</h2><span class="meta">Данные ядра · sysfs</span></div><div id="sensors">Получаем данные…</div><p class="hint">Только датчики, обнаруженные на колонке.</p></article></div>
 </main>
+<main id="tab-apps" data-page hidden>
+<header class="page-head"><div><h1>Приложения</h1><div class="sub">Запуск служб из пакетов YAM · управление на колонке</div></div><button class="btn" id="apps-refresh">Обновить</button></header>
+<section class="card"><div class="card-head"><h2>Восстановление после перезагрузки</h2><span class="badge" id="apps-boot-badge">Проверяем…</span></div><p class="hint" id="apps-boot-info"></p><div id="apps-boot-checks"></div><button class="btn" id="apps-recheck">Проверить сейчас</button><p class="hint">Проверяются панель, запуск YAM CLI и выбранные службы. Наличие процесса не подтверждает полную работоспособность приложения.</p></section>
+<p class="hint">Автозапуск выключен, пока ты не включишь его для конкретной службы. До 8 служб одновременно. Приложение должно работать на переднем плане. «Остановить» действует до следующей загрузки; отключение автозапуска не останавливает текущий процесс.</p>
+<div id="apps-list" class="package-list">Получаем приложения…</div>
+<section class="card"><h2 id="apps-log-title">Журнал службы</h2><pre class="out" id="apps-log" aria-live="polite">Выбери «Журнал» у службы.</pre><p class="hint">До 256 КБ в файле и одна предыдущая копия на службу. На экран выводятся последние 32 КБ.</p></section>
+<p id="apps-message" class="hint" role="status"></p>
+</main>
+
 <main id="tab-yam" data-page hidden>
 <header class="page-head"><div><h1>YAM v2</h1><div class="sub">Пакеты .yampkg · Мини 3 Про / pickle · управление на колонке</div></div><button class="btn" id="y2-refresh">Обновить данные</button></header>
 <section class="card"><div class="card-head"><h2>Менеджер пакетов</h2><span class="badge" id="y2-version">Проверяем…</span></div>
@@ -676,7 +686,7 @@
 <section class="card"><h2>Каталог и зависимости</h2><div class="row"><select class="field" id="y2-registry" aria-label="Реестр"></select><input class="field" id="y2-query" type="search" placeholder="Название или описание" aria-label="Поиск YAM"><button class="btn" id="y2-search">Найти</button></div><div id="y2-results" class="package-list"></div>
 <div class="row"><input class="field" id="y2-name" placeholder="namespace/name или namespace/name@1.2.3" aria-label="Имя пакета"><button class="btn" id="y2-plan">Показать зависимости</button><button class="btn primary" id="y2-install">Установить</button></div><p class="hint">Каталог и индексы проверяются ключом Ed25519, скачанные пакеты — по размеру и SHA-256. Сначала проверь план установки: он не изменяет пакеты.</p></section>
 <section class="card"><h2>Реестры</h2><div id="y2-registries"></div><button class="btn" id="y2-official">Подключить официальный реестр</button><details><summary>Добавить другой реестр</summary><div class="row"><input class="field" id="y2-reg-name" placeholder="Имя"><input class="field" id="y2-reg-url" type="url" placeholder="https://repo.example/v2"><input class="field" id="y2-reg-key" placeholder="ed25519:публичный-ключ-Base64"><button class="btn" id="y2-reg-add">Добавить</button></div></details></section>
-<section class="card"><h2>Диагностика и службы</h2><div class="row"><button class="btn" id="y2-doctor">Проверить пакеты (doctor)</button><button class="btn" id="y2-repair">Восстановить ссылки (repair)</button><button class="btn" id="y2-entware">Проверить Entware</button><button class="btn" id="y2-services">Декларации служб</button></div><p class="hint">YAM 0.2.5 сохраняет декларации служб, но не запускает их. Кнопки запуска и автозапуска для пакетов v2 недоступны.</p><div class="row"><input class="field" id="y2-path" placeholder="bin/команда" aria-label="Относительный путь"><button class="btn" id="y2-which">Найти владельца файла</button></div></section>
+<section class="card"><h2>Диагностика и службы</h2><div class="row"><button class="btn" id="y2-doctor">Проверить пакеты (doctor)</button><button class="btn" id="y2-repair">Восстановить ссылки (repair)</button><button class="btn" id="y2-entware">Проверить Entware</button><button class="btn" id="y2-services">Декларации служб</button></div><p class="hint">Службы запускает хост панели в разделе «Приложения». YAM управляет установкой пакетов; правила запуска и автозапуска сохраняются отдельно.</p><div class="row"><input class="field" id="y2-path" placeholder="bin/команда" aria-label="Относительный путь"><button class="btn" id="y2-which">Найти владельца файла</button></div></section>
 </div>
 <section class="card"><h2>Результат операции</h2><pre class="out" id="y2-report" aria-live="polite">Выбери действие.</pre></section>
 </main>
@@ -701,7 +711,7 @@
   <header class="page-head"><div><h1>Диагностика</h1><div class="sub">Локальное управление, службы и YAM CLI</div></div><button class="btn" data-refresh>Обновить</button></header>
   <section class="card"><h2>Проверка колонки</h2><div class="row"><button class="btn primary" id="diagnostic-run">Проверить всё</button><button class="btn" id="diagnostic-save" disabled>Скачать отчёт</button></div><p class="hint" id="diagnostic-status">Прошивка, память, сервисы и соединение с Яндексом. Проверка занимает до 10 секунд.</p><div id="diagnostic-checks" aria-live="polite"></div><details><summary>Полный отчёт</summary><pre class="out" id="diagnostic-report"></pre></details></section><section class="card"><h2>Профиль устройства</h2><pre class="out" id="device-json">Нет данных</pre></section>
   <section class="card"><div class="card-head"><h2>Журнал ADB</h2><a class="btn sm" href="#logs">Логи Quasar</a></div><pre class="out" id="adb-log">Ожидаем данные…</pre></section>
-  <section class="card"><h2>DARKLS Alice Panel 0.5.0</h2><p class="hint">Основа и оформление: dimap/yandex-station-web, MIT. Дополнительно: локальное управление, YAM v2, диагностика и исправление старого adbd.</p><p class="hint">Ограничения профиля Mini 3 Pro сохранены: неподдерживаемые операции не включаются принудительно.</p><a class="btn" href="#settings">Настройки панели</a></section>
+  <section class="card"><h2>DARKLS Alice Panel 0.6.0</h2><p class="hint">Основа и оформление: dimap/yandex-station-web, MIT. Дополнительно: локальное управление, YAM v2, диагностика и исправление старого adbd.</p><p class="hint">Ограничения профиля Mini 3 Pro сохранены: неподдерживаемые операции не включаются принудительно.</p><a class="btn" href="#settings">Настройки панели</a></section>
 </main>
 <dialog id="login-dialog"><form id="login-form"><h2>Вход в панель</h2><p class="hint">Введи пароль панели.</p><input class="field" id="login-password" type="password" autocomplete="current-password" placeholder="Пароль" required><p id="login-error" role="alert"></p><button class="btn primary" type="submit">Войти</button></form></dialog>
 <div id="darkls-toast" role="status" hidden></div>
@@ -2142,14 +2152,14 @@ const store = {
   get: k => { try { return localStorage.getItem(PanelContext.storageKey(k)); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(PanelContext.storageKey(k), v); } catch {} },
 };
-const TABS = ['yam', 'home', 'diagnostics', 'updates', 'backups', 'chatgpt', 'overview', 'player', 'alarm', 'charts', 'boot', 'files', 'logs', 'console', 'settings'];
+const TABS = ['apps', 'yam', 'home', 'diagnostics', 'updates', 'backups', 'chatgpt', 'overview', 'player', 'alarm', 'charts', 'boot', 'files', 'logs', 'console', 'settings'];
 let bootLoaded = false;
 let logsLoaded = false;
 let shownTab = null;
 function showTab() {
   const h = location.hash.slice(1);
   const tab = TABS.includes(h) ? h : (online ? 'overview' : 'home');
-  const direct = ['yam','home','diagnostics','settings','updates','backups','chatgpt'].includes(tab);
+  const direct = ['apps','yam','home','diagnostics','settings','updates','backups','chatgpt'].includes(tab);
   // другая вкладка — начинаем её сверху (например, переход в «Плеер» из нижнего плеера)
   if (online && shownTab && tab !== shownTab) window.scrollTo({ top: 0 });
   if (online) shownTab = tab;
@@ -3616,5 +3626,6 @@ document.addEventListener('DOMContentLoaded',()=>{if(online&&!$('#tab-console').
 <script src="static/maintenance.js"></script>
 <script src="static/native-media.js"></script>
 <script src="static/native-yam2.js"></script>
+<script src="static/native-apps.js"></script>
 </body>
 </html>

@@ -101,6 +101,12 @@ class ArmIntegration(unittest.TestCase):
    self.assertEqual(m.action(dict(action='files',name='test/demo'))['files'],['bin/demo'])
    self.assertEqual(m.action(dict(action='which',path='bin/demo'))['owner'],'test/demo')
    services=m.services();self.assertEqual(services['items'][0]['name'],'test/demo/worker');self.assertFalse(services['supervised'])
+   from yam_host import catalogue,Host
+   packages,declarations=catalogue(root);self.assertEqual(declarations['test/demo/worker']['spec']['exec'],['bin/demo'])
+   host=Host(base/'panel',root,base/'app-run')
+   try:
+    host.action(dict(action='start',service='test/demo/worker'));host.procs['test/demo/worker'].wait(timeout=3);host.tick();self.assertEqual(host.state['test/demo/worker']['status'],'completed')
+   finally:host.close()
    (root/'bin/demo').unlink();self.assertFalse(m.action(dict(action='doctor'))['ok'])
    m.action(dict(action='repair'));self.assertTrue(m.action(dict(action='doctor'))['ok'])
    m.action(dict(action='remove',name='test/demo'));self.assertEqual(m.packages(),[])
