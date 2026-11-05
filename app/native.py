@@ -229,6 +229,8 @@ def install(module):
     module.Handler.do_GET, module.Handler.do_POST = do_get, do_post
     import native_features
     native_features.install(module, updates)
+    import native_yam2
+    native_yam2.install(module, updates.base)
 
 
 def main():

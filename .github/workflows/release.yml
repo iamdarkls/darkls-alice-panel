@@ -21,6 +21,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -v
           python -m compileall -q app
+          node --check app/static/native-yam2.js
           node --check app/static/native-media.js
           node --check app/static/maintenance.js
           node --check app/static/native-updates.js

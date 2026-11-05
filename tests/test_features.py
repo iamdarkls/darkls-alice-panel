@@ -141,7 +141,13 @@ class Http(unittest.TestCase):
      except OSError:time.sleep(.1)
     with self.assertRaises(urllib.error.HTTPError) as e:req('/api/native/voice')
     self.assertEqual(e.exception.code,401)
+    with self.assertRaises(urllib.error.HTTPError) as e:req('/api/yam2/status')
+    self.assertEqual(e.exception.code,401)
     req('/api/panel-auth/login',dict(password='test-password-only')).close()
+    self.assertEqual(json.load(req('/api/yam2/status'))['manager'],'YAM v2 CLI')
+    with self.assertRaises(urllib.error.HTTPError) as e:req('/api/yam2/action',{'action':'doctor'},{'Origin':'https://foreign.test'})
+    self.assertEqual(e.exception.code,403)
+    self.assertIn('capabilities',json.load(req('/api/yam2/status')))
     self.assertFalse(json.load(req('/api/native/voice'))['has_token'])
     with self.assertRaises(urllib.error.HTTPError) as e:req('/api/native/backups/create',{},dict(Origin='https://foreign.test'))
     self.assertEqual(e.exception.code,403)
@@ -150,7 +156,7 @@ class Http(unittest.TestCase):
     r=urllib.request.Request(url+'/api/native/backups/restore',data=blob,headers={'Content-Type':'application/octet-stream'})
     self.assertTrue(json.load(op.open(r))['ok'])
     with self.assertRaises(urllib.error.HTTPError):req('/api/native/voice/start',{})
-    page=req('/').read().decode();self.assertIn('id="tab-chatgpt"',page);self.assertIn('id="tab-backups"',page)
+    page=req('/').read().decode();self.assertIn('id="tab-chatgpt"',page);self.assertIn('id="tab-backups"',page);self.assertIn('id="tab-yam"',page)
    finally:
     p.terminate();out=p.communicate(timeout=10)[0]
    self.assertNotIn(b'Traceback',out)

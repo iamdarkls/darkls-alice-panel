@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 import profiles
 import server as s
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 UPSTREAM_COMMIT = "7df9f78e3a0fde1dcdee92e6b2f43293faf17d8a"
 LIMIT = 32 * 1024 * 1024
 BASE = "/data/quazar/yam"

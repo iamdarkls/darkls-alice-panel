@@ -23,11 +23,11 @@ async function api(path, body, options={}) {
 }
 function showView() {
   const native=document.body.dataset.darklsUnified==='true';
-  const sections=native?['home','packages','diagnostics','updates','backups','chatgpt','overview','player','alarm','boot','apps','files','console','charts','logs','settings']:['home','packages','diagnostics'];
+  const sections=native?['yam','home','packages','diagnostics','updates','backups','chatgpt','overview','player','alarm','boot','apps','files','console','charts','logs','settings']:['home','packages','diagnostics'];
   state.view=sections.includes(location.hash.slice(1))?location.hash.slice(1):'home';
   for(const node of document.querySelectorAll('.view')) node.hidden=node.id!=='view-'+state.view;
   for(const node of document.querySelectorAll('[data-view]')) node.classList.toggle('active',node.dataset.view===state.view);
-  $('#breadcrumb').textContent={updates:'Обновления панели',backups:'Резервные копии',chatgpt:'ChatGPT',home:'Главная',packages:'Пакеты YAM',diagnostics:'Диагностика',overview:'Свет, часы и Bluetooth',player:'Музыка',alarm:'Будильники',boot:'Запуск колонки',apps:'Демон YAM',files:'Файлы',console:'Root-консоль',charts:'Графики',logs:'Логи',settings:'Настройки'}[state.view];
+  $('#breadcrumb').textContent={yam:'YAM v2',updates:'Обновления панели',backups:'Резервные копии',chatgpt:'ChatGPT',home:'Главная',packages:'Legacy .yap',diagnostics:'Диагностика',overview:'Свет, часы и Bluetooth',player:'Музыка',alarm:'Будильники',boot:'Запуск колонки',apps:'Legacy yamd',files:'Файлы',console:'Root-консоль',charts:'Графики',logs:'Логи',settings:'Настройки'}[state.view];
   $('#menu-button').setAttribute('aria-expanded','false'); $('.sidebar').classList.remove('open');
 }
 addEventListener('hashchange',showView); showView();
@@ -40,7 +40,7 @@ function renderHealth(info) {
   const adb=info.adb.state==='online', yam=info.yam.online;
   dot('#yam-dot',yam); dot('#adb-dot',adb); dot('#sidebar-status',yam||adb);
   $('#yam-state').textContent=yam?'Работает':'Нет связи';
-  $('#yam-detail').textContent=yam?'Демон доступен напрямую по сети':'Проверь питание и подключение колонки';
+  $('#yam-detail').textContent=yam?'Прежний yamd доступен; актуальный YAM — в разделе YAM v2':'Legacy yamd недоступен; YAM v2 проверяется отдельно';
   $('#adb-state').textContent=adb?'Подключён':info.adb.state==='connecting'?'Подключение…':'Ожидаем ADB';
   $('#adb-detail').textContent=info.native?'Панель работает на колонке, ADB не нужен':adb?'Инструменты готовы к работе':'YAM доступен независимо от ADB';
   $('#hero-status').textContent=yam&&adb?'● Все подключения активны':yam?'● YAM подключён':adb?'● ADB подключён':'● Ожидаем колонку';
@@ -50,7 +50,7 @@ function renderHealth(info) {
   $('#device-json').textContent=JSON.stringify(info.yam.device||{error:info.yam.error||'Нет данных'},null,2);
   $('#hero-platform').textContent=info.yam.device?`${info.yam.device.model} · ${info.yam.device.architecture}`:'Mini 3 Pro · Pickle';
   $('#adb-log').textContent=(info.adb.log||[]).map(e=>`${new Date(e.t*1000).toLocaleTimeString('ru-RU')}  ${e.msg}`).join('\n')||'Событий пока нет';
-  $('#connection-error').hidden=yam;
+  $('#connection-error').hidden=yam||info.native;
   $('#connection-error').textContent=info.yam.error||'';
 }
 function renderPackages() {

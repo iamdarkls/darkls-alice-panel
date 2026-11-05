@@ -1,10 +1,10 @@
-import {Window} from '../../.test-tools/node_modules/happy-dom/lib/index.js';
+const {Window}=await import(process.env.HAPPY_DOM_MODULE||'happy-dom');
 import fs from 'node:fs';import assert from 'node:assert/strict';
 const w=new Window({url:'http://alice.test:8770/#chatgpt',settings:{enableJavaScriptEvaluation:true,disableJavaScriptFileLoading:true,disableCSSFileLoading:true}});
-const html=fs.readFileSync('release-0.3.1/app/static/unified.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');w.document.write(html);
-const calls=[];let installed=false;
-w.fetch=async(url,opt={})=>{calls.push([url,opt]);let value={};if(url.endsWith('/media/install'))installed=true;if(url.endsWith('/media'))value={available:installed,detail:installed?'Audio ready':'WAV only'};if(url.includes('/voice')&&!url.includes('/status'))value={url:'https://voice.test',has_token:true,compatibility_confirmed:false,note:'Unverified Mini 3 Pro'};if(url.includes('/voice/status'))value={agent:'darkls-voice-agent',state:{ActiveState:'inactive'}};if(url.endsWith('/updates'))value={installed:'0.3.0',feed:'https://github.com/owner/repo/releases/latest/download/update.json',auto:false,previous:'0.2.0-old',status:{checked:1700000000,available:true,latest:'0.3.1',notes:'New changes'}};if(url.endsWith('/diagnostics'))value={created:1700000000,firmware:'factory-12',checks:[{name:'Storage',status:'ok',detail:'100 MB'}]};if(url.endsWith('/backups'))value={last_backup:{created:1700000000,size:1024}};return {ok:true,json:async()=>value};};w.confirm=()=>true;
-for(const file of ['maintenance.js','native-updates.js','native-media.js'])w.eval(fs.readFileSync('release-0.3.1/app/static/'+file,'utf8'));
+const html=fs.readFileSync(new URL('../app/static/unified.html',import.meta.url),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');w.document.write(html);
+const calls=[];let installed=false,yamInstalled=false;
+w.fetch=async(url,opt={})=>{calls.push([url,opt]);let value={};if(url.endsWith('/yam2/bootstrap'))yamInstalled=true;if(url.endsWith('/yam2/status'))value={installed:yamInstalled,version:'0.2.5'};if(url.endsWith('/yam2/packages'))value=[{name:'test/demo',version:'1.0.0',target:'pickle'}];if(url.endsWith('/yam2/registries'))value=[{name:'official',url:'https://repo.yse.wtf/v2'}];if(url.endsWith('/media/install'))installed=true;if(url.endsWith('/media'))value={available:installed,detail:installed?'Audio ready':'WAV only'};if(url.includes('/voice')&&!url.includes('/status'))value={url:'https://voice.test',has_token:true,compatibility_confirmed:false,note:'Unverified Mini 3 Pro'};if(url.includes('/voice/status'))value={agent:'darkls-voice-agent',state:{ActiveState:'inactive'}};if(url.endsWith('/updates'))value={installed:'0.3.0',feed:'https://github.com/owner/repo/releases/latest/download/update.json',auto:false,previous:'0.2.0-old',status:{checked:1700000000,available:true,latest:'0.3.1',notes:'New changes'}};if(url.endsWith('/diagnostics'))value={created:1700000000,firmware:'factory-12',checks:[{name:'Storage',status:'ok',detail:'100 MB'}]};if(url.endsWith('/backups'))value={last_backup:{created:1700000000,size:1024}};return {ok:true,json:async()=>value};};w.confirm=()=>true;
+for(const file of ['maintenance.js','native-updates.js','native-media.js','native-yam2.js'])w.eval(fs.readFileSync(new URL('../app/static/'+file,import.meta.url),'utf8'));
 await new Promise(r=>setTimeout(r,20));
 assert.equal(w.document.getElementById('voice-start').disabled,true);
 assert.equal(w.document.getElementById('voice-url').value,'https://voice.test');
@@ -20,4 +20,11 @@ w.location.hash='#backups';w.dispatchEvent(new w.HashChangeEvent('hashchange'));
 const ids=[...w.document.querySelectorAll('[id]')].map(x=>x.id);assert.equal(new Set(ids).size,ids.length,'Duplicate DOM IDs');
 for(const name of ['chatgpt','updates','backups']){assert(w.document.querySelector(`a[data-tab="${name}"]`));assert(w.document.getElementById('tab-'+name));}
 w.document.getElementById('media-install').click();await new Promise(r=>setTimeout(r,20));assert.equal(w.document.getElementById('media-install').hidden,true);
+assert.equal(w.document.getElementById('y2-controls').hidden,true);
+w.document.getElementById('y2-bootstrap').click();await new Promise(r=>setTimeout(r,30));
+assert.equal(w.document.getElementById('y2-controls').hidden,false);assert.equal(w.document.getElementById('y2-version').textContent,'Установлен 0.2.5');
+assert.match(w.document.getElementById('y2-packages').textContent,/test\/demo/);
+w.document.getElementById('y2-name').value='test/demo@1.0.0';w.document.getElementById('y2-plan').click();await new Promise(r=>setTimeout(r,30));
+assert(calls.some(([u,o])=>u==='/api/yam2/action'&&JSON.parse(o.body).action==='plan'&&JSON.parse(o.body).name==='test/demo@1.0.0'));
+assert.equal(w.document.getElementById('y2-bootstrap').disabled,false);
 console.log('UI maintenance buttons, reports, navigation targets, token masking, and rollback availability: OK');await w.happyDOM.close();
