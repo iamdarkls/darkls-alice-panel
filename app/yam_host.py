@@ -4,9 +4,10 @@ from pathlib import Path,PurePosixPath
 from urllib.parse import quote
 from native_updates import atomic_json,load_json
 from vendor import yaml
+from clock_runtime import ClockRuntime,PACKAGE as CLOCK_PACKAGE
 
 PROTOCOL=1
-CODE=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+CODE=hashlib.sha256(Path(__file__).read_bytes()+Path(__file__).with_name('clock_runtime.py').read_bytes()).hexdigest()
 MAX_RUNNING=8
 SERVICE_RE=r'[a-z0-9][a-z0-9-]{0,63}/[a-z0-9][a-z0-9-]{0,63}/[a-z0-9-]{1,64}'
 class Loader(yaml.SafeLoader):
@@ -58,7 +59,7 @@ class Host:
         self.procs={};self.state={};self.log_locks=collections.defaultdict(threading.Lock);self.wanted=set(self.cfg['autostart']);self.manual_stops=set();self.completed=set();self.pause_token=None;self.pause_started=0
         self.lock=threading.RLock();self.stop_event=threading.Event();self.started=time.time();self.last_scan=0;self.packages=[];self.services={};self.error=None
         self.boot_id=read('/proc/sys/kernel/random/boot_id','unknown');self.recovery=load_json(self.base/'data/yam-recovery.json',{})
-        self.check_due=time.monotonic()+15;self.check_pending=True;self.refresh()
+        self.check_due=time.monotonic()+15;self.check_pending=True;self.refresh();self.clock_runtime=None
     def refresh(self):
         try:self.packages,self.services=catalogue(self.root);self.error=None
         except ValueError as e:self.error=str(e)
@@ -107,6 +108,9 @@ class Host:
                     path.chmod(0o600)
         except OSError:pass
         finally:child.stdout.close()
+    def ensure_runtime(self):
+        if self.clock_runtime is None:self.clock_runtime=ClockRuntime()
+        return self.clock_runtime
     def launch(self,key):
         item=self.services[key];state=self.state.setdefault(key,{})
         if item.get('error'):raise ValueError(item['error'])
@@ -115,7 +119,11 @@ class Host:
         reason=self.dependencies(item)
         if reason:state.update(status='waiting',detail=reason);return
         argv,env=self.argv_env(item)
-        child=subprocess.Popen(argv,cwd=item['package_root'],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True,bufsize=0)
+        if item['package']==CLOCK_PACKAGE:env.update(self.ensure_runtime().issue(key))
+        try:child=subprocess.Popen(argv,cwd=item['package_root'],env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True,bufsize=0)
+        except Exception:
+            if self.clock_runtime:self.clock_runtime.revoke(key)
+            raise
         self.procs[key]=child;self.completed.discard(key)
         state.update(status='running',pid=child.pid,started=time.time(),detail='',fingerprint=hashlib.sha256(json.dumps(item,sort_keys=True).encode()).hexdigest())
         threading.Thread(target=self.pump,args=(key,child),daemon=True).start()
@@ -124,12 +132,16 @@ class Host:
         if child:
             # Always clean the process group, including children after a launcher exits.
             with contextlib.suppress(ProcessLookupError):os.killpg(child.pid,signal.SIGTERM)
-            try:child.wait(timeout=3)
+            try:child.wait(timeout=10 if key.rsplit('/',1)[0]==CLOCK_PACKAGE else 3)
             except subprocess.TimeoutExpired:
                 with contextlib.suppress(ProcessLookupError):os.killpg(child.pid,signal.SIGKILL)
                 child.wait(timeout=2)
             with contextlib.suppress(ProcessLookupError):os.killpg(child.pid,signal.SIGKILL)
-        self.state.setdefault(key,{}).update(status='stopped',pid=None,detail='')
+        self.state.setdefault(key,{})['detail']=''
+        if self.clock_runtime:
+            try:self.clock_runtime.revoke(key)
+            except OSError:self.state.setdefault(key,{})['detail']='Не удалось восстановить экран после остановки'
+        self.state.setdefault(key,{}).update(status='stopped',pid=None)
     def tick(self):
         if not self.base.is_dir():self.stop_event.set();return
         current=self.base/'current'
@@ -186,7 +198,7 @@ class Host:
                     if item['package']!=p['name']:continue
                     state=self.state.get(key,{})
                     items.append(dict(id=key,name=item['name'],status=state.get('status','stopped'),pid=state.get('pid'),autostart=key in self.cfg['autostart'],
-                                      restart=item.get('spec',{}).get('restart'),oneshot=item.get('spec',{}).get('oneshot'),exit=state.get('exit'),detail=item.get('error') or state.get('detail',''),retry_at=state.get('retry_at')))
+                                      runtime='clock-compat' if item['package']==CLOCK_PACKAGE else None,restart=item.get('spec',{}).get('restart'),oneshot=item.get('spec',{}).get('oneshot'),exit=state.get('exit'),detail=item.get('error') or state.get('detail',''),retry_at=state.get('retry_at')))
                 packages.append(dict(**p,description=self.cfg['descriptions'].get(p['name'],''),web=self.cfg['web'].get(p['name']),services=items))
             return dict(protocol=PROTOCOL,code=CODE,packages=packages,error=self.error or ('Незавершённая операция YAM: проверь doctor/repair.' if (self.root/'db/transaction.json').exists() else None),paused=bool(self.pause_token) or self.mutating(),recovery_pending=self.check_pending,recovery=self.recovery,boot_id=self.boot_id,max_running=MAX_RUNNING)
     def action(self,d):
@@ -234,6 +246,7 @@ class Host:
         self.stop_event.set()
         with self.lock:
             for key in list(self.procs):self.terminate(key)
+        if self.clock_runtime:self.clock_runtime.close()
 
 def read(path,default=''):
     try:return Path(path).read_text().strip()

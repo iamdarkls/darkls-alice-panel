@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import profiles
 import server as s
 import native_station
-VERSION = "0.6.0"
+VERSION = "0.6.1"
 UPSTREAM_COMMIT = "7df9f78e3a0fde1dcdee92e6b2f43293faf17d8a"
 
 def health(panel):
