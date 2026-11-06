@@ -194,6 +194,7 @@ def install(module):
 
     import native_updates
     updates = native_updates.Updater(Path(os.environ.get('DARKLS_BASE', '/data/darkls-alice')))
+    updates.start_cleanup()
     old_get, old_post = module.Handler.do_GET, module.Handler.do_POST
     def do_get(self):
         path = urlparse(self.path).path
@@ -221,7 +222,8 @@ def install(module):
             return self._send(400, dict(error=str(exc)))
         actions = {'/api/native/updates/config': lambda: updates.configure(data),
                    '/api/native/updates/check': updates.check,
-                   '/api/native/updates/apply': updates.apply}
+                   '/api/native/updates/apply': updates.apply,
+                   '/api/native/updates/cleanup': updates.cleanup}
         if path not in actions:
             return self._send(404, dict(error='Неизвестный API'))
         return self._handle(actions[path])

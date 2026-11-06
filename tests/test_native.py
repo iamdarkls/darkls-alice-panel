@@ -134,6 +134,18 @@ class UpdatesTests(unittest.TestCase):
         self.assertEqual((self.base / 'previous' / 'DARKLS_VERSION').read_text(), '0.2.0')
         self.assertTrue((self.base / 'restart.request').exists())
 
+    def test_cleanup_runs_before_update_disk_reserve_check(self):
+        stale=self.base/'releases/0.1.0-0123456789ab';stale.mkdir()
+        (stale/'DARKLS_VERSION').write_text('0.1.0');(stale/'native.py').write_text('pass')
+        os.utime(stale,(time.time()-7200,)*2)
+        proc=self.base/'empty-proc';proc.mkdir()
+        cleanup=self.updater._cleanup
+        usage=shutil.disk_usage(self.base)
+        def disk_usage(path):return usage._replace(free=(51 if stale.exists() else 60)*1048576)
+        with patch.object(updates.OPENER,'open',side_effect=self.open),patch.object(updates.shutil,'disk_usage',side_effect=disk_usage),patch.object(self.updater,'_cleanup',side_effect=lambda:cleanup(proc=proc)):
+            self.assertTrue(self.updater.apply()['restarting'])
+        self.assertFalse(stale.exists());self.assertEqual((self.base/'previous'/'DARKLS_VERSION').read_text(),'0.2.0')
+
     def test_bad_checksum_keeps_current(self):
         self.manifest['sha256'] = '0' * 64
         with patch.object(updates.OPENER, 'open', side_effect=self.open):

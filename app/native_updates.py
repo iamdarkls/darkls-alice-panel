@@ -10,6 +10,7 @@ import shutil
 import tarfile
 import tempfile
 import time
+import threading
 import sys
 import urllib.request
 from urllib.parse import urlparse
@@ -109,6 +110,7 @@ class Updater:
         self.base = Path(base).resolve()
         self.config_file = self.base / 'config.json'
         self.state_file = self.base / 'update-status.json'
+        self.cleanup_file = self.base / 'cleanup-status.json'
 
     @contextlib.contextmanager
     def lock(self):
@@ -119,11 +121,95 @@ class Updater:
                 raise ValueError('Проверка или обновление уже выполняется') from exc
             yield
 
+    def start_cleanup(self):
+        # Wait for the supervisor's initial health check before touching old releases.
+        def worker():
+            time.sleep(60)
+            while True:
+                try:
+                    with self.lock():self._cleanup()
+                except (OSError,ValueError) as exc:
+                    print('Panel cleanup: '+str(exc),flush=True)
+                time.sleep(3600)
+        threading.Thread(target=worker,name='panel-cleanup',daemon=True).start()
+
+    def cleanup(self):
+        with self.lock():return self._cleanup(force=True)
+
+    def _cleanup(self,force=False,proc='/proc'):
+        cfg=load_json(self.config_file)
+        if not force and cfg.get('auto_cleanup',True) is False:return dict(skipped='Автоочистка выключена')
+        report=dict(checked=time.time(),removed=[],errors=[],freed=0)
+        def finish(reason=None):
+            if reason:report['skipped']=reason
+            atomic_json(self.cleanup_file,report)
+            return report
+        # Current and rollback must be unambiguously identified. Pending installs may
+        # still need other releases for recovery; defer to the supervisor in that case.
+        releases=self.base/'releases'
+        if (self.base/'restart.request').exists() or load_json(self.state_file).get('pending'):
+            return finish('Обновление ещё проверяется; очистка отложена')
+        if releases.is_symlink() or not releases.is_dir():return finish('Каталог сборок недоступен')
+        releases=releases.resolve();keep=set()
+        for name in ('current','previous'):
+            link=self.base/name
+            if not os.path.lexists(link):
+                if name=='current':return finish('Текущая сборка не определена')
+                continue
+            target=link.resolve()
+            if target.parent!=releases or not target.is_dir():return finish('Не удалось проверить ссылки сборок')
+            keep.add(target)
+        code=Path(__file__).resolve().parent
+        if code.parent==releases:keep.add(code)
+        # Keep releases still used by the service host or another running panel.
+        # Read errors during process inspection cause a conservative skipped sweep.
+        try:
+            for directory in Path(proc).iterdir():
+                if not directory.name.isdecimal():continue
+                try:
+                    values=[os.readlink(directory/'cwd')]
+                    with (directory/'cmdline').open('rb') as f:values+=f.read(8192).decode(errors='replace').split('\0')
+                    for value in values:
+                        if value.startswith(str(releases)+'/'):
+                            name=value[len(str(releases))+1:].split('/',1)[0]
+                            keep.add(releases/name)
+                except FileNotFoundError:continue
+                except (PermissionError,OSError):return finish('Не удалось проверить работающие процессы')
+        except OSError:return finish('Список процессов недоступен')
+        before=shutil.disk_usage(self.base).free
+        # Only known updater release names and its own abandoned atomic writes.
+        # No archives, app data, runtimes, logs or YAM files are eligible.
+        for path in sorted(releases.iterdir()):
+            if len(report['removed'])>=64:break
+            if path.is_symlink() or not path.is_dir() or path in keep:continue
+            match=re.fullmatch(r'(\d+\.\d+\.\d+)-[a-f0-9]{12}',path.name)
+            if not match:continue
+            try:
+                if time.time()-path.stat().st_mtime<3600:continue
+                marker=path/'DARKLS_VERSION'
+                if marker.is_symlink() or not marker.is_file() or marker.stat().st_size>32 or marker.read_text().strip()!=match[1]:continue
+                if not (path/'native.py').is_file():continue
+                shutil.rmtree(path);report['removed'].append('releases/'+path.name)
+            except UnicodeError:continue
+            except OSError as exc:report['errors'].append(path.name+': '+str(exc))
+        for name in ('config.json','update-status.json','cleanup-status.json'):
+            for path in self.base.glob(name+'.*.new'):
+                if len(report['removed'])>=96:break
+                try:
+                    if not path.is_symlink() and path.is_file() and time.time()-path.stat().st_mtime>=86400:
+                        path.unlink();report['removed'].append(path.name)
+                except OSError as exc:report['errors'].append(path.name+': '+str(exc))
+        report['freed']=max(0,shutil.disk_usage(self.base).free-before)
+        report['errors']=report['errors'][:32]
+        return finish()
+
     def info(self):
         cfg = load_json(self.config_file)
         active = (self.base / 'current').resolve()
         installed = (active / 'DARKLS_VERSION').read_text().strip() if active.is_dir() else None
         return dict(installed=installed, feed=cfg.get('update_feed', ''),
+                    auto_cleanup=cfg.get('auto_cleanup',True) is not False,cleanup=load_json(self.cleanup_file),
+                    free=shutil.disk_usage(self.base).free,required_free=MAX_UNPACKED+RESERVE,
                     auto=bool(cfg.get('auto_update') and cfg.get('update_feed')),
                     interval_hours=cfg.get('update_interval_hours', 6),
                     status=load_json(self.state_file),
@@ -141,7 +227,9 @@ class Updater:
             auto = data.get('auto', cfg.get('auto_update', False))
             if not isinstance(auto, bool):
                 raise ValueError('auto должен быть true/false')
-            cfg.update(update_feed=feed, auto_update=bool(feed and auto))
+            auto_cleanup=data.get('auto_cleanup',cfg.get('auto_cleanup',True))
+            if not isinstance(auto_cleanup,bool):raise ValueError('auto_cleanup должен быть true/false')
+            cfg.update(update_feed=feed, auto_update=bool(feed and auto),auto_cleanup=auto_cleanup)
             atomic_json(self.config_file, cfg)
             return self.info()
 
@@ -177,6 +265,7 @@ class Updater:
             return self._check()
 
     def _check(self):
+        self._cleanup()
         try:
             candidate = self._manifest()
             current = self.info()['installed']
@@ -198,6 +287,7 @@ class Updater:
                 raise ValueError('Новая версия отсутствует; откат через источник обновлений запрещён')
             if (self.base / 'restart.request').exists():
                 raise ValueError('Предыдущее обновление ещё проверяется')
+            self._cleanup()
             if shutil.disk_usage(self.base).free < MAX_UNPACKED + RESERVE:
                 raise ValueError('Для обновления нужно не менее 52 МБ свободного места в /data')
             with tempfile.TemporaryDirectory(prefix='darkls-update-', dir='/tmp') as td:
