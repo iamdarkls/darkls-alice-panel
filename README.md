@@ -1,4 +1,4 @@
-# DARKLS Alice Panel 0.6.1
+# DARKLS Alice Panel 0.6.3
 
 Автономная панель для rooted Яндекс Станции Мини 3 Про (pickle, aarch64). Работает на колонке в /data/darkls-alice; после установки ПК и ADB для работы панели не нужны. Основа интерфейса: dimap/yandex-station-web, MIT.
 

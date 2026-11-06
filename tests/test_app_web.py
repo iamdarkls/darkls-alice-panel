@@ -25,6 +25,42 @@ class WebPanels(unittest.TestCase):
   observed=[dict(port=8081,address='127.0.0.1',family=socket.AF_INET)]
   d=self.detector(observed);self.assertFalse(self.refresh(d)['endpoint']['ready'])
   observed.append(dict(port=8081,address='0.0.0.0',family=socket.AF_INET));self.assertTrue(self.refresh(d)['endpoint']['ready'])
+ def test_dual_stack_checks_ipv4_instead_of_rejecting_tcp6(self):
+  calls=[]
+  def check(port,path,address,manual):calls.append(address);return dict(ready=address=='127.0.0.1',detail='Доступно')
+  d=self.detector([dict(port=1213,address='::',family=socket.AF_INET6)],check)
+  result=self.refresh(d);self.assertTrue(result['endpoint']['ready']);self.assertEqual(calls,['127.0.0.1'])
+ def test_ipv6_only_and_ipv6_loopback_remain_unavailable(self):
+  calls=[]
+  def check(*a,**kw):calls.append(kw['address']);return dict(ready=False,detail='offline')
+  d=self.detector([dict(port=1213,address='::',family=socket.AF_INET6)],check)
+  self.assertFalse(self.refresh(d)['endpoint']['ready']);self.assertEqual(calls,['127.0.0.1'])
+  d=self.detector([dict(port=1213,address='::1',family=socket.AF_INET6)],check)
+  self.assertFalse(self.refresh(d)['endpoint']['ready']);self.assertEqual(calls,['127.0.0.1'])
+ def test_second_binding_is_checked_when_first_http_probe_fails(self):
+  observed=[dict(port=8081,address='192.0.2.1',family=socket.AF_INET),dict(port=8081,address='::',family=socket.AF_INET6)]
+  d=self.detector(observed,lambda *a,**kw:dict(ready=kw['address']=='127.0.0.1',detail='checked'))
+  self.assertTrue(self.refresh(d)['endpoint']['ready'])
+ def test_real_ipv6_wildcard_http_with_and_without_ipv4(self):
+  if not socket.has_ipv6 or not socket.has_dualstack_ipv6():self.skipTest('IPv6 dual stack unavailable')
+  class Handler(http.server.BaseHTTPRequestHandler):
+   def do_GET(self):self.send_response(200);self.send_header('Content-Type','text/html');self.end_headers();self.wfile.write(b'<html>UwU</html>')
+   def log_message(self,*a):pass
+  for ipv6_only in (False,True):
+   with self.subTest(ipv6_only=ipv6_only):
+    class Server(http.server.ThreadingHTTPServer):
+     address_family=socket.AF_INET6
+     def server_bind(self):
+      self.socket.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_V6ONLY,int(ipv6_only));super().server_bind()
+    try:server=Server(('::',0),Handler)
+    except OSError as error:self.skipTest('IPv6 bind unavailable: '+str(error))
+    thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+    try:
+     d=self.detector([dict(port=server.server_port,address='::',family=socket.AF_INET6)],probe)
+     result=self.refresh(d);self.assertEqual(result['endpoint']['ready'],not ipv6_only)
+     self.assertTrue(probe(server.server_port,address='::1')['ready'])
+     table=listeners('/proc');self.assertTrue(any(v['port']==server.server_port and v['family']==socket.AF_INET6 for v in table.values()))
+    finally:server.shutdown();server.server_close();thread.join()
  def test_manual_override_and_disabled(self):
   calls=[];d=self.detector([dict(port=8081,address='0.0.0.0',family=socket.AF_INET)],lambda port,*a,**kw:(calls.append(port) or dict(ready=False,detail='offline')))
   result=self.refresh(d,{'test/demo':dict(port=8090,path='/ui')});self.assertEqual(result['endpoint']['port'],8090);self.assertEqual(calls,[8090])

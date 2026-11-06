@@ -146,13 +146,28 @@ class Discovery:
                         continue
                     if time.monotonic()>deadline:break
                     matching.sort(key=lambda v:(v['family']!=socket.AF_INET,ipaddress.ip_address(v['address']).is_loopback))
-                    v=matching[0] if matching else None
-                    address=v['address'] if v else '127.0.0.1'
-                    checked=self.checker(candidate['port'],candidate['path'],address=address,manual=mode=='manual')
-                    if checked['ready'] and v:
-                        ip=ipaddress.ip_address(v['address'])
-                        if ip.is_loopback or ip.version==6:
-                            checked.update(ready=False,detail='Панель слушает только локальный адрес или IPv6')
+                    checked=dict(ready=False,detail='Не отвечает по HTTP')
+                    for listener in matching or [None]:
+                        ip=ipaddress.ip_address(listener['address']) if listener else ipaddress.ip_address('127.0.0.1')
+                        mapped=ip.ipv4_mapped if ip.version==6 else None
+                        if listener and (ip.is_loopback or (mapped and mapped.is_loopback)):
+                            checked=dict(ready=False,detail='Панель слушает только локальный адрес')
+                            continue
+                        if ip.version==6:
+                            if ip.is_unspecified:
+                                # A [::] socket may also accept IPv4. Confirm that path,
+                                # rather than rejecting all tcp6 entries or assuming dual stack.
+                                address='127.0.0.1'
+                            elif mapped:address=str(mapped)
+                            else:
+                                checked=dict(ready=False,detail='Для панели не обнаружен адрес IPv4')
+                                continue
+                        else:address=str(ip)
+                        checked=self.checker(candidate['port'],candidate['path'],address=address,manual=mode=='manual')
+                        if checked['ready']:break
+                        if listener and ip.version==6 and ip.is_unspecified:
+                            checked['detail']='Панель не отвечает по HTTP через IPv4'
+                        if time.monotonic()>deadline:break
                     candidate.update(checked,checked=time.time())
                     if selected is None or candidate['ready']:selected=candidate
                     if candidate['ready']:break
