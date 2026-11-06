@@ -15,7 +15,7 @@ async function refresh(){
   const text=installed?'Установлен '+(v.version||'(версия не определена)'):'Ещё не установлен';
   $('y2-version').textContent=text;$('y2-home-version').textContent=text;
   $('y2-controls').hidden=!installed;
-  $('y2-state').textContent=installed?'YAM v2 готов. Управление через CLI; HTTP API yamd не требуется.':'Установи актуальную ARM64-версию YAM. После установки заверши переход на новый менеджер.';
+  $('y2-state').textContent=installed?'Готов к установке и обновлению приложений.':'Установи актуальную ARM64-версию YAM. После установки заверши переход на новый менеджер.';
   $('y2-bootstrap').textContent=installed?'Обновить YAM':'Установить актуальный YAM';
   const transition=await api('retirement');$('y2-transition').hidden=!transition.pending;$('y2-retire').disabled=!installed;
   if(!transition.pending&&transition.archive)$('y2-state').textContent+=' Архив прежнего менеджера: '+transition.archive;
@@ -48,7 +48,7 @@ $('y2-official').onclick=()=>run(()=>action('official-registry'));
 $('y2-reg-add').onclick=()=>run(()=>action('registry-add',{registry:$('y2-reg-name').value.trim(),url:$('y2-reg-url').value.trim(),key:$('y2-reg-key').value.trim()}));
 $('y2-search').onclick=()=>run(async()=>{
   const v=await action('search',{query:$('y2-query').value});
-  $('y2-results').innerHTML=v.items.length?v.items.map(p=>`<article class="card"><h3>${esc(p.name)} · ${esc(p.version)}</h3><p>${esc(p.summary)}</p><button class="btn sm" data-y2-pick="${esc(p.name)}">Выбрать</button><button class="btn sm" data-y2-info="${esc(p.name)}">Описание</button></article>`).join(''):'<p class="hint">По этому запросу пакетов нет.</p>';
+  $('y2-results').innerHTML=v.items.length?v.items.map(p=>`<article class="card catalog-card"><div class="catalog-head"><span class="catalog-symbol" aria-hidden="true">${window.DarklsUI.icon('box',20)}</span><div class="catalog-title"><h3>${esc(p.name)}</h3><span class="badge">${esc(p.version)}</span></div></div><p class="catalog-summary">${esc(p.summary||'Описание отсутствует.')}</p><div class="catalog-actions"><button class="btn sm" data-y2-pick="${esc(p.name)}">Выбрать</button><button class="btn sm" data-y2-info="${esc(p.name)}">Описание</button></div></article>`).join(''):'<p class="hint">По этому запросу пакетов нет.</p>';
   return 'Найдено: '+v.items.length;
 });
 $('y2-query').onkeydown=e=>{if(e.key==='Enter')$('y2-search').click();};

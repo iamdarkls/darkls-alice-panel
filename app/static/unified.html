@@ -581,7 +581,7 @@
   #toast.err { background: var(--danger); color: #fff; }
 </style>
 <link rel="stylesheet" href="static/unified.css">
-<link rel="stylesheet" href="static/model.css"><style>[data-profile-hidden]{display:none!important}</style></head>
+<link rel="stylesheet" href="static/model.css"><link rel="stylesheet" href="static/ui-polish.css"><style>[data-profile-hidden]{display:none!important}</style></head>
 <body data-darkls-unified="true">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
@@ -619,6 +619,7 @@
     <symbol id="i-alarm" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M5 3 2 6M19 3l3 3"/></g></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></g></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-home" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9"/></g></symbol><symbol id="i-update" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5M4 16a8 8 0 0 0 14 3l3-3m0 5v-5h-5"/></g></symbol><symbol id="i-chat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7A8.4 8.4 0 0 1 4 11.5a8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8zM8 11h.01M12 11h.01M16 11h.01"/></g></symbol><symbol id="i-archive" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v5H3zM5 8v13h14V8M10 12h4"/></g></symbol><symbol id="i-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7v6c0 5 9 9 9 9s9-4 9-9V7zM8 12l3 3 5-6"/></g></symbol><symbol id="i-check" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 6"/></g></symbol><symbol id="i-close" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M6 18 18 6"/></g></symbol><symbol id="i-info" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></g></symbol><symbol id="i-layers" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 9-5 9 5-9 5zM3 12l9 5 9-5M3 17l9 5 9-5"/></g></symbol><symbol id="i-undo" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h11a6 6 0 0 1 0 12M3 10l6-6M3 10l6 6"/></g></symbol><symbol id="i-arrow-right" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></g></symbol><symbol id="i-server" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h16v7H4zM4 14h16v7H4zM8 6.5h.01M8 17.5h.01"/></g></symbol>
   </defs>
 </svg>
 
@@ -629,26 +630,27 @@
       <div><b id="model-name">Станция Лайт 2</b><small>DARKLS Alice Panel</small></div>
     </a>
     <nav class="side" aria-label="Разделы">
-      <a href="#home" data-tab="home" data-view="home"><svg width="20" height="20" aria-hidden="true"><use href="#i-grid"/></svg>Главная</a>
+      <a href="#home" data-tab="home" data-view="home"><svg width="20" height="20" aria-hidden="true"><use href="#i-home"/></svg>Главная</a>
       <a href="#overview" data-tab="overview" data-view="overview"><svg width="20" height="20" aria-hidden="true"><use href="#i-grid"/></svg>Обзор</a>
       <a href="#player" data-tab="player" data-view="player"><svg width="20" height="20" aria-hidden="true"><use href="#i-music"/></svg>Плеер</a>
       <div class="nav-group" role="presentation">Колонка</div>
       <a href="#alarm" data-tab="alarm" data-view="alarm"><svg width="20" height="20" aria-hidden="true"><use href="#i-alarm"/></svg>Будильник</a>
       <a href="#boot" data-tab="boot" data-view="boot"><svg width="20" height="20" aria-hidden="true"><use href="#i-power"/></svg>Запуск</a>
       <a href="#apps" data-tab="apps" data-view="apps"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>Приложения</a>
-      <a href="#yam" data-tab="yam" data-view="yam"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>YAM v2</a>
+      <a href="#yam" data-tab="yam" data-view="yam"><svg width="20" height="20" aria-hidden="true"><use href="#i-layers"/></svg>YAM v2</a>
       <a href="#files" data-tab="files" data-view="files"><svg width="20" height="20" aria-hidden="true"><use href="#i-folder"/></svg>Файлы</a>
       <a href="#console" data-tab="console" data-view="console"><svg width="20" height="20" aria-hidden="true"><use href="#i-term"/></svg>Консоль</a>
       <div class="nav-group" role="presentation">Состояние</div>
       <a href="#charts" data-tab="charts" data-view="charts"><svg width="20" height="20" aria-hidden="true"><use href="#i-chart"/></svg>Графики</a>
       <a href="#logs" data-tab="logs" data-view="logs"><svg width="20" height="20" aria-hidden="true"><use href="#i-log"/></svg>Логи</a>
-      <div class="nav-sep" role="presentation"></div>
-      <a href="#diagnostics" data-tab="diagnostics" data-view="diagnostics"><svg width="20" height="20" aria-hidden="true"><use href="#i-term"/></svg>Диагностика</a>
-      <a href="#updates" data-tab="updates" data-view="updates">Обновления панели</a>
-      <a href="#chatgpt" data-tab="chatgpt" data-view="chatgpt">ChatGPT</a>
-      <a href="#backups" data-tab="backups" data-view="backups">Резервные копии</a>
+      <div class="nav-sep" role="presentation"></div><div class="nav-group" role="presentation">Обслуживание</div>
+      <a href="#diagnostics" data-tab="diagnostics" data-view="diagnostics"><svg width="20" height="20" aria-hidden="true"><use href="#i-shield"/></svg>Диагностика</a>
+      <a href="#updates" data-tab="updates" data-view="updates"><svg width="20" height="20" aria-hidden="true"><use href="#i-update"/></svg>Обновления панели</a>
+      <a href="#chatgpt" data-tab="chatgpt" data-view="chatgpt"><svg width="20" height="20" aria-hidden="true"><use href="#i-chat"/></svg>ChatGPT</a>
+      <a href="#backups" data-tab="backups" data-view="backups"><svg width="20" height="20" aria-hidden="true"><use href="#i-archive"/></svg>Резервные копии</a>
       <a href="#settings" data-tab="settings" data-view="settings"><svg width="20" height="20" aria-hidden="true"><use href="#i-gear"/></svg>Настройки</a>
     </nav>
+    <p class="nav-scroll-hint">Разделы можно листать вбок →</p>
     <div class="conn" id="conn-box" hidden>
       <b><span class="dot" id="conn"></span><span id="conn-text">Подключение…</span></b>
       <small id="conn-ip">—</small>
@@ -678,13 +680,13 @@
 <section class="card"><div class="card-head"><h2>Менеджер пакетов</h2><span class="badge" id="y2-version">Проверяем…</span></div>
 <p class="hint" id="y2-state" role="status">Получаем состояние YAM…</p>
 <div class="row"><button class="btn primary" id="y2-bootstrap">Установить актуальный YAM</button><button class="btn" id="y2-latest">Проверить версию</button><a class="btn" href="https://github.com/nyakokitsu/yam/releases" target="_blank" rel="noopener">Релизы ↗</a></div>
-<p class="hint">YAM v2 работает через CLI без yamd и отдельного веб-интерфейса. Устанавливается в /data/yam. Управление пакетами работает без HTTP-демона. Установленные ранее .yap не преобразуются в .yampkg.</p>
+<details class="manager-details"><summary>Сведения о менеджере</summary><p class="hint">YAM v2 установлен в /data/yam и работает локально через CLI. Пакеты прежнего формата .yap не преобразуются в .yampkg.</p></details>
 </section>
 <section class="card" id="y2-transition" hidden><h2>Завершить переход</h2><p class="hint" id="y2-transition-note">Установи YAM v2, затем заверши переход: старые приложения .yap остановятся, yamd и его автозапуск будут отключены, каталог с данными переместится в архив. Файлы не удаляются.</p><button class="btn" id="y2-retire">Завершить переход и убрать yamd</button></section>
 <div id="y2-controls" hidden>
-<section class="card"><div class="card-head"><h2>Установленные пакеты <span class="badge" id="y2-count">0</span></h2><label class="btn upload-label">Загрузить .yampkg<input type="file" id="y2-file" accept=".yampkg" hidden></label></div><p class="hint">Загрузка до 32 МБ. Локальный пакет должен быть из доверенного источника: его postinstall может выполняться с правами root.</p><label class="toggle"><span>Разрешить замену конфликтующих пакетов и установку зависимостей Entware (--yes)</span><input type="checkbox" id="y2-replace"></label><div id="y2-packages" class="package-list"></div></section>
-<section class="card"><h2>Каталог и зависимости</h2><div class="row"><select class="field" id="y2-registry" aria-label="Реестр"></select><input class="field" id="y2-query" type="search" placeholder="Название или описание" aria-label="Поиск YAM"><button class="btn" id="y2-search">Найти</button></div><div id="y2-results" class="package-list"></div>
-<div class="row"><input class="field" id="y2-name" placeholder="namespace/name или namespace/name@1.2.3" aria-label="Имя пакета"><button class="btn" id="y2-plan">Показать зависимости</button><button class="btn primary" id="y2-install">Установить</button></div><p class="hint">Каталог и индексы проверяются ключом Ed25519, скачанные пакеты — по размеру и SHA-256. Сначала проверь план установки: он не изменяет пакеты.</p></section>
+<section class="card"><div class="card-head"><h2>Установленные пакеты <span class="badge" id="y2-count">0</span></h2><label class="btn upload-label">Загрузить .yampkg<input type="file" id="y2-file" accept=".yampkg" hidden></label></div><p class="hint">Пакеты до 32 МБ. Устанавливай их из доверенных источников: они могут выполнять системные команды.</p><label class="toggle"><span>Разрешить замену конфликтов и зависимости Entware</span><input type="checkbox" id="y2-replace"></label><div id="y2-packages" class="package-list"></div></section>
+<section class="card"><h2>Каталог и зависимости</h2><div class="catalog-search"><select class="field" id="y2-registry" aria-label="Реестр"></select><input class="field" id="y2-query" type="search" placeholder="Название или описание" aria-label="Поиск YAM"><button class="btn" id="y2-search">Найти</button></div><div id="y2-results" class="package-list"></div>
+<div class="catalog-install"><input class="field" id="y2-name" placeholder="namespace/name[@версия]" aria-label="Имя пакета"><button class="btn" id="y2-plan">Показать зависимости</button><button class="btn primary" id="y2-install">Установить</button></div><p class="hint">Каталог и индексы проверяются ключом Ed25519, скачанные пакеты — по размеру и SHA-256. Сначала проверь план установки: он не изменяет пакеты.</p></section>
 <section class="card"><h2>Реестры</h2><div id="y2-registries"></div><button class="btn" id="y2-official">Подключить официальный реестр</button><details><summary>Добавить другой реестр</summary><div class="row"><input class="field" id="y2-reg-name" placeholder="Имя"><input class="field" id="y2-reg-url" type="url" placeholder="https://repo.example/v2"><input class="field" id="y2-reg-key" placeholder="ed25519:публичный-ключ-Base64"><button class="btn" id="y2-reg-add">Добавить</button></div></details></section>
 <section class="card"><h2>Диагностика и службы</h2><div class="row"><button class="btn" id="y2-doctor">Проверить пакеты (doctor)</button><button class="btn" id="y2-repair">Восстановить ссылки (repair)</button><button class="btn" id="y2-entware">Проверить Entware</button><button class="btn" id="y2-services">Декларации служб</button></div><p class="hint">Службы запускает хост панели в разделе «Приложения». YAM управляет установкой пакетов; правила запуска и автозапуска сохраняются отдельно.</p><div class="row"><input class="field" id="y2-path" placeholder="bin/команда" aria-label="Относительный путь"><button class="btn" id="y2-which">Найти владельца файла</button></div></section>
 </div>
@@ -711,7 +713,7 @@
   <header class="page-head"><div><h1>Диагностика</h1><div class="sub">Локальное управление, службы и YAM CLI</div></div><button class="btn" data-refresh>Обновить</button></header>
   <section class="card"><h2>Проверка колонки</h2><div class="row"><button class="btn primary" id="diagnostic-run">Проверить всё</button><button class="btn" id="diagnostic-save" disabled>Скачать отчёт</button></div><p class="hint" id="diagnostic-status">Прошивка, память, сервисы и соединение с Яндексом. Проверка занимает до 10 секунд.</p><div id="diagnostic-checks" aria-live="polite"></div><details><summary>Полный отчёт</summary><pre class="out" id="diagnostic-report"></pre></details></section><section class="card"><h2>Профиль устройства</h2><pre class="out" id="device-json">Нет данных</pre></section>
   <section class="card"><div class="card-head"><h2>Журнал ADB</h2><a class="btn sm" href="#logs">Логи Quasar</a></div><pre class="out" id="adb-log">Ожидаем данные…</pre></section>
-  <section class="card"><h2>DARKLS Alice Panel 0.6.4</h2><p class="hint">Основа и оформление: dimap/yandex-station-web, MIT. Дополнительно: локальное управление, YAM v2, диагностика и исправление старого adbd.</p><p class="hint">Ограничения профиля Mini 3 Pro сохранены: неподдерживаемые операции не включаются принудительно.</p><a class="btn" href="#settings">Настройки панели</a></section>
+  <section class="card"><h2>DARKLS Alice Panel 0.6.5</h2><p class="hint">Основа и оформление: dimap/yandex-station-web, MIT. Дополнительно: локальное управление, YAM v2, диагностика и исправление старого adbd.</p><p class="hint">Ограничения профиля Mini 3 Pro сохранены: неподдерживаемые операции не включаются принудительно.</p><a class="btn" href="#settings">Настройки панели</a></section>
 </main>
 <dialog id="login-dialog"><form id="login-form"><h2>Вход в панель</h2><p class="hint">Введи пароль панели.</p><input class="field" id="login-password" type="password" autocomplete="current-password" placeholder="Пароль" required><p id="login-error" role="alert"></p><button class="btn primary" type="submit">Войти</button></form></dialog>
 <div id="darkls-toast" role="status" hidden></div>
@@ -3620,6 +3622,7 @@ document.addEventListener('DOMContentLoaded',()=>{if(online&&!$('#tab-console').
 <script src="static/vendor/xterm/addon-fit.js"></script>
 <script type="importmap">{ "imports": { "three": "./static/vendor/three/three.module.js" } }</script>
 <script type="module" src="static/model.js"></script>
+<script src="static/ui-kit.js"></script>
 <script src="static/darkls.js"></script>
 <script>showTab();window.addEventListener("darkls:authchanged",connCheck);</script>
 <script src="static/native-updates.js"></script>

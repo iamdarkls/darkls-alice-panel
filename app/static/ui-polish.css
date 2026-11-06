@@ -1,0 +1,36 @@
+/* Shared finishing for the existing dimap theme; no remote assets or theme reset. */
+.ui-icon{display:inline-block;flex:0 0 auto;vertical-align:middle;pointer-events:none}
+nav.side .ui-icon,nav.side> a>svg{width:20px;height:20px;opacity:.9}
+.page-head h1,.card h2,.card h3{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;overflow-wrap:anywhere}
+.page-head h1>.ui-icon{color:var(--accent-ink)}
+.card h2>.ui-icon,.card h3>.ui-icon{color:var(--muted)}
+.btn{line-height:1.35;gap:8px;text-align:center;white-space:normal}
+.btn:disabled{cursor:not-allowed}
+.btn:not(:disabled):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.package-list{display:grid;gap:12px;min-width:0}
+.summary-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line-2);min-width:0}
+.summary-row:last-child{border-bottom:0}.summary-row>span{color:var(--muted);font-size:13px}.summary-row>*{min-width:0;overflow-wrap:anywhere}.summary-row>.btn{flex-shrink:0}.summary-row a:not(.btn){color:var(--accent-ink);text-decoration:none}
+.check-row{display:flex;align-items:flex-start;gap:12px;padding:13px 0;border-bottom:1px solid var(--line-2)}
+.check-row:last-child{border-bottom:0}.check-mark{display:flex;align-items:center;justify-content:center;flex:0 0 30px;height:30px;border-radius:9px;background:var(--field);color:var(--muted)}
+.check-row.is-ok .check-mark{color:var(--ok-ink);background:var(--ok-soft)}.check-row.is-error .check-mark{color:var(--danger);background:var(--danger-soft)}.check-row.is-warn .check-mark{color:var(--accent-ink);background:var(--accent-soft)}
+.check-copy{display:flex;flex-direction:column;gap:4px;min-width:0}.check-copy b{font-size:13.5px;font-weight:700}.check-copy>span{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere;line-height:1.55}
+#apps-boot-checks,#diagnostic-checks{display:flex;flex-direction:column;min-width:0}
+#tab-yam .card p,#tab-apps .card p{margin:0;line-height:1.6}
+.catalog-search{display:grid;grid-template-columns:minmax(120px,160px) minmax(0,1fr) auto;gap:10px;align-items:center}
+.catalog-search>.field{width:100%}.catalog-install{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center}.catalog-install>.field{width:100%}
+.catalog-card{padding:18px;gap:14px}.catalog-head{display:flex;align-items:flex-start;gap:12px;min-width:0}.catalog-symbol{display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex:0 0 40px;border:1px solid var(--line);border-radius:12px;background:var(--field);color:var(--accent-ink)}
+.catalog-title{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}.catalog-title h3{margin:0;font-size:15px;line-height:1.5;overflow-wrap:anywhere}.catalog-title .badge{font-size:11.5px}.catalog-title h3>.ui-icon{display:none}
+.catalog-summary{font-size:13px;color:var(--text-2);line-height:1.65;overflow-wrap:anywhere}.catalog-actions{display:flex;flex-wrap:wrap;gap:8px}.catalog-actions .btn{min-width:110px}
+#y2-results:empty{display:none}#y2-results:not(:empty){margin:2px 0 6px}#y2-registries .summary-row:first-child{padding-top:0}
+#y2-packages .package-item{flex-direction:row;align-items:center;justify-content:space-between;gap:14px;padding:16px}#y2-packages .package-item h3{margin:0;font-size:15px}#y2-packages .package-item p{font-size:12.5px;color:var(--muted);margin-top:6px}
+#apps-list>.app-card{gap:16px}#apps-list .service-card{padding:16px;border-radius:14px;background:var(--field);box-shadow:none}#apps-list .app-description:empty{display:none}#apps-list .app-web{display:flex;flex-wrap:wrap;align-items:center;gap:10px}#apps-list .app-web>.btn{flex:0 1 auto}#apps-list .service-card .row>.btn{min-width:110px}
+#apps-list details{border-top:1px solid var(--line);padding-top:14px}#apps-list summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--text-2)}#apps-list form{display:grid;gap:14px;padding-top:14px}#apps-list form>label,#apps-list form .row>label{display:flex;flex-direction:column;gap:7px;font-size:12.5px;color:var(--muted)}#apps-list form .field{width:100%}#apps-list form .row{align-items:flex-end}#apps-list form .row>label{flex:1 1 160px}
+:is(#tab-home,#tab-apps,#tab-yam,#tab-diagnostics,#tab-updates,#tab-backups,#tab-chatgpt)>.card>.btn{align-self:flex-start}
+#native-updates .out,#voice-result,#backup-info,#backup-status{white-space:pre-wrap;overflow-wrap:anywhere}#native-cleanup-status,#native-space{line-height:1.6}#native-space{font-variant-numeric:tabular-nums}#y2-report,#apps-log,#diagnostic-report{line-height:1.65;max-height:440px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:760px){.catalog-search{grid-template-columns:minmax(0,1fr) auto}.catalog-search>select{grid-column:1/-1}.catalog-install{grid-template-columns:1fr 1fr}.catalog-install>.field{grid-column:1/-1}.catalog-install>.btn{padding:8px 12px}.catalog-card{padding:15px}.catalog-title{gap:5px}.catalog-title h3{font-size:14px}.catalog-actions .btn{flex:1;min-width:0}#y2-packages .package-item{align-items:flex-start;flex-direction:column}#y2-packages .package-item>.row{width:100%}.summary-row{flex-wrap:wrap;gap:6px 12px}.page-head h1{font-size:26px}#apps-list .service-card .row>.btn{flex:1 1 120px}.nav-group{display:none}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+#y2-controls{display:grid;gap:20px}
+#y2-report,#apps-log{min-height:120px;height:auto}
+@media(max-width:760px){.sidebar{min-width:0;width:100%}.sidebar nav.side{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:6px;scrollbar-width:thin;scrollbar-color:var(--btn-line) transparent}.sidebar nav.side>a{flex:0 0 auto;white-space:nowrap}.sidebar nav.side::-webkit-scrollbar{height:4px}.sidebar nav.side::-webkit-scrollbar-thumb{background:var(--btn-line);border-radius:4px}}
+
+.nav-scroll-hint{display:none}.manager-details summary{cursor:pointer;font-size:12.5px;color:var(--muted)}.manager-details[open] .hint{margin-top:10px!important}@media(max-width:760px){.nav-scroll-hint{display:block;margin:-4px 0 0;font-size:11.5px;color:var(--muted)}}
