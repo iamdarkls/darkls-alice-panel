@@ -5,9 +5,10 @@ from urllib.parse import quote
 from native_updates import atomic_json,load_json
 from vendor import yaml
 from clock_runtime import ClockRuntime,PACKAGE as CLOCK_PACKAGE
+from app_web import Discovery,endpoint
 
 PROTOCOL=1
-CODE=hashlib.sha256(Path(__file__).read_bytes()+Path(__file__).with_name('clock_runtime.py').read_bytes()).hexdigest()
+CODE=hashlib.sha256(Path(__file__).read_bytes()+Path(__file__).with_name('clock_runtime.py').read_bytes()+Path(__file__).with_name('app_web.py').read_bytes()).hexdigest()
 MAX_RUNNING=8
 SERVICE_RE=r'[a-z0-9][a-z0-9-]{0,63}/[a-z0-9][a-z0-9-]{0,63}/[a-z0-9-]{1,64}'
 class Loader(yaml.SafeLoader):
@@ -55,6 +56,7 @@ class Host:
     def __init__(self,base,root='/data/yam',run=None):
         self.base=Path(base);self.root=Path(root);self.yam_run=Path('/tmp/yam') if str(self.root)=='/data/yam' else self.root/'run';self.run=Path(run or runtime(base));self.run.mkdir(parents=True,exist_ok=True,mode=0o700)
         self.settings=self.base/'data/yam-apps.json';self.cfg=load_json(self.settings,dict(autostart=[],web={},descriptions={}))
+        self.cfg.setdefault('web_disabled',[]);self.web_discovery=Discovery(self.root)
         self.cfg.setdefault('autostart',[]);self.cfg.setdefault('web',{});self.cfg.setdefault('descriptions',{})
         self.procs={};self.state={};self.log_locks=collections.defaultdict(threading.Lock);self.wanted=set(self.cfg['autostart']);self.manual_stops=set();self.completed=set();self.pause_token=None;self.pause_started=0
         self.lock=threading.RLock();self.stop_event=threading.Event();self.started=time.time();self.last_scan=0;self.packages=[];self.services={};self.error=None
@@ -192,6 +194,7 @@ class Host:
     def status(self):
         with self.lock:
             self.refresh();packages=[]
+            self.web_discovery.schedule(self.packages,self.services,{k:p.pid for k,p in self.procs.items() if p.poll() is None},self.cfg['web'],self.cfg['web_disabled'])
             for p in self.packages:
                 items=[]
                 for key,item in self.services.items():
@@ -199,7 +202,8 @@ class Host:
                     state=self.state.get(key,{})
                     items.append(dict(id=key,name=item['name'],status=state.get('status','stopped'),pid=state.get('pid'),autostart=key in self.cfg['autostart'],
                                       runtime='clock-compat' if item['package']==CLOCK_PACKAGE else None,restart=item.get('spec',{}).get('restart'),oneshot=item.get('spec',{}).get('oneshot'),exit=state.get('exit'),detail=item.get('error') or state.get('detail',''),retry_at=state.get('retry_at')))
-                packages.append(dict(**p,description=self.cfg['descriptions'].get(p['name'],''),web=self.cfg['web'].get(p['name']),services=items))
+                discovery=self.web_discovery.get(p['name'],self.cfg['web'],self.cfg['web_disabled'])
+                packages.append(dict(**p,description=self.cfg['descriptions'].get(p['name'],''),web=discovery['endpoint'],web_mode=discovery['mode'],web_detail=discovery['detail'],services=items))
             return dict(protocol=PROTOCOL,code=CODE,packages=packages,error=self.error or ('Незавершённая операция YAM: проверь doctor/repair.' if (self.root/'db/transaction.json').exists() else None),paused=bool(self.pause_token) or self.mutating(),recovery_pending=self.check_pending,recovery=self.recovery,boot_id=self.boot_id,max_running=MAX_RUNNING)
     def action(self,d):
         with self.lock:
@@ -215,6 +219,7 @@ class Host:
                 if not self.error:
                     self.wanted.intersection_update(self.services);self.cfg['autostart']=[k for k in self.cfg['autostart'] if k in self.services];self.save()
                 return dict(ok=True)
+            if op=='discover':self.web_discovery.invalidate();return dict(ok=True)
             if op=='recheck':self.check_pending=True;self.check_due=time.monotonic()+1;return dict(ok=True)
             if op=='metadata':
                 name=d.get('package');
@@ -222,10 +227,16 @@ class Host:
                 description=d.get('description','')
                 if not isinstance(description,str) or len(description)>2000:raise ValueError('Описание до 2000 символов')
                 port=d.get('port');path=d.get('path','/')
-                if port in (None,''):self.cfg['web'].pop(name,None)
-                else:
-                    if type(port)!=int or not 1024<=port<=65535 or not isinstance(path,str) or not path.startswith('/') or path.startswith('//') or len(path)>200 or any(c in path for c in '\r\n\\?#'):raise ValueError('Порт 1024–65535 и путь /... без параметров')
+                mode=d.get('mode','manual' if port not in (None,'') else 'auto')
+                if mode not in ('auto','manual','none'):raise ValueError('Неизвестный режим веб-ссылки')
+                if mode=='manual':
+                    if not endpoint(port,path):raise ValueError('Порт 1024–65535 и путь /... без параметров')
                     self.cfg['web'][name]=dict(port=port,path=path)
+                else:self.cfg['web'].pop(name,None)
+                disabled=set(self.cfg['web_disabled'])
+                if mode=='none':disabled.add(name)
+                else:disabled.discard(name)
+                self.cfg['web_disabled']=sorted(disabled);self.web_discovery.invalidate()
                 self.cfg['descriptions'][name]=description;self.save();return dict(ok=True)
             if not isinstance(key,str) or key not in self.services:raise ValueError('Служба не найдена')
             if op in ('start','restart'):
@@ -246,6 +257,7 @@ class Host:
         self.stop_event.set()
         with self.lock:
             for key in list(self.procs):self.terminate(key)
+        self.web_discovery.close()
         if self.clock_runtime:self.clock_runtime.close()
 
 def read(path,default=''):

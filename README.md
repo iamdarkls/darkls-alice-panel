@@ -59,3 +59,5 @@ python build-release.py --repository iamdarkls/darkls-alice-panel
 ```
 
 DOM-тест: установи npm-пакет happy-dom и запусти `node tests/ui.mjs` (или укажи путь к модулю в HAPPY_DOM_MODULE). Для интеграционной проверки официального ARM-бинарника под QEMU см. YAM-V2.md. Физическая колонка проверяется отдельно после установки.
+
+Автоматические ссылки на панели приложений (0.6.2): [WEB-PANELS.md](WEB-PANELS.md).

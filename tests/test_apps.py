@@ -63,6 +63,14 @@ class Apps(unittest.TestCase):
   card=self.host.status()['packages'][0];self.assertEqual(card['description'],'Player');self.assertEqual(card['web']['port'],8088)
   for path in ['//evil.test','/bad?token=x','/bad\\path']:
    with self.assertRaises(ValueError):self.host.action(dict(action='metadata',package='test/demo',description='',port=8088,path=path))
+ def test_web_modes_preserve_manual_and_disable_autodetection(self):
+  data=dict(action='metadata',package='test/demo',description='Web')
+  self.host.action(dict(data,mode='manual',port=8090,path='/ui/'))
+  self.assertEqual(self.host.status()['packages'][0]['web_mode'],'manual')
+  self.host.action(dict(data,mode='none'));card=self.host.status()['packages'][0]
+  self.assertEqual(card['web_mode'],'none');self.assertIsNone(card['web'])
+  self.host.action(dict(data,mode='auto'));self.assertEqual(self.host.status()['packages'][0]['web_mode'],'auto')
+  with self.assertRaises(ValueError):self.host.action(dict(data,mode='invalid'))
  def test_after_unknown_dependency_is_visible(self):
   key='test/demo/worker';self.host.services[key]['spec']['after']=['missing']
   self.host.action(dict(action='start',service=key));self.assertFalse(self.host.procs);self.assertEqual(self.host.state[key]['status'],'waiting')

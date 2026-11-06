@@ -29,7 +29,7 @@ def install(module,manager,base):
             size=int(self.headers.get('Content-Length','0'))
             if not 0<=size<=16384:return self._send(413,dict(error='Запрос слишком большой'))
             data=self._json()
-            if not isinstance(data,dict) or data.get('action') not in ('start','stop','restart','enable','disable','metadata','recheck'):raise ValueError('Неизвестное действие')
+            if not isinstance(data,dict) or data.get('action') not in ('start','stop','restart','enable','disable','metadata','recheck','discover'):raise ValueError('Неизвестное действие')
         except ValueError as e:return self._send(400,dict(error=str(e)))
         def call():client.ensure();return client.request(dict(data,op='action'))
         return self._handle(call)
