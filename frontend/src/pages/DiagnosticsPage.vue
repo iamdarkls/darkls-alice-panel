@@ -1,0 +1,14 @@
+<script setup lang="ts">
+import UiIcon from '../components/UiIcon.vue'
+import{ref}from'vue';import CheckRow from'../components/CheckRow.vue';import{health}from'../composables/state';import{useApi,useAction,download,stamp}from'../composables/api'
+const api=useApi(),report=ref<any>(null),{busy,message,run}=useAction()
+function diagnose(){void run(async()=>{report.value=await api('/api/native/diagnostics',{});message.value='Проверено '+stamp(report.value.created)+' · прошивка '+(report.value.firmware?.trim()||'не определена')})}
+async function refresh(){try{health.info=await api('/api/darkls/health')}catch(e){message.value=(e as Error).message}}
+function saveReport(){if(report.value)download(new Blob([JSON.stringify(report.value,null,2)],{type:'application/json'}),'alice-diagnostics.json')}
+</script>
+<template>
+  <header class="page-head"><div><h1><UiIcon name="shield"/>Диагностика</h1><div class="sub">Локальное управление, службы и YAM CLI</div></div><button class="btn" data-refresh @click="refresh"><UiIcon name="refresh"/>Обновить</button></header>
+  <section class="card"><h2><UiIcon name="shield"/>Проверка колонки</h2><div class="row"><button class="btn primary" id="diagnostic-run" @click="diagnose" :disabled="busy"><UiIcon name="shield"/>Проверить всё</button><button class="btn" id="diagnostic-save" @click="saveReport" :disabled="!report"><UiIcon name="dl"/>Скачать отчёт</button></div><p class="hint" id="diagnostic-status">{{ message||'Прошивка, память, сервисы и соединение с Яндексом. Проверка занимает до 10 секунд.' }}</p><div id="diagnostic-checks" aria-live="polite"><CheckRow v-for="(c,i) in report?.checks||[]" :key="i" :name="c.name" :detail="c.detail??('HTTP '+c.http)" :status="c.status"/></div><details><summary>Полный отчёт</summary><pre class="out" id="diagnostic-report">{{ report?JSON.stringify(report,null,2):'' }}</pre></details></section><section class="card"><h2><UiIcon name="server"/>Профиль устройства</h2><pre class="out" id="device-json">{{ health.info?JSON.stringify(health.info.device,null,2):'Нет данных' }}</pre></section>
+  <section class="card"><div class="card-head"><h2><UiIcon name="log"/>Журнал ADB</h2><a class="btn sm" href="#logs">Логи Quasar</a></div><pre class="out" id="adb-log">{{ (health.info?.adb?.log||[]).map((e:any)=>new Date(e.t*1000).toLocaleTimeString('ru-RU')+' '+e.msg).join('\n') }}</pre></section>
+  <section class="card"><h2><UiIcon name="info"/>DARKLS Alice Panel 0.7.0</h2><p class="hint">Основа и оформление: dimap/yandex-station-web, MIT. Дополнительно: локальное управление, YAM v2, диагностика и исправление старого adbd.</p><p class="hint">Ограничения профиля Mini 3 Pro сохранены: неподдерживаемые операции не включаются принудительно.</p><a class="btn" href="#settings">Настройки панели</a></section>
+</template>

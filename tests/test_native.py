@@ -208,7 +208,7 @@ class ProcessTests(unittest.TestCase):
                 self.assertTrue(value['native'])
                 self.assertEqual(value['pid'], proc.pid)
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/') as response:
-                    self.assertIn(b'native-updates.js', response.read())
+                    self.assertIn(b'static/ui/panel.js', response.read())
                 request = urllib.request.Request(f'http://127.0.0.1:{port}/api/shell', data=b'{}', headers={'Content-Type':'application/json'})
                 with self.assertRaises(urllib.error.HTTPError) as caught:
                     urllib.request.urlopen(request)

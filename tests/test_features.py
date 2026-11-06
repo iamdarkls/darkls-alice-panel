@@ -172,7 +172,7 @@ class Http(unittest.TestCase):
     r=urllib.request.Request(url+'/api/native/backups/restore',data=blob,headers={'Content-Type':'application/octet-stream'})
     self.assertTrue(json.load(op.open(r))['ok'])
     with self.assertRaises(urllib.error.HTTPError):req('/api/native/voice/start',{})
-    page=req('/').read().decode();self.assertIn('id="tab-chatgpt"',page);self.assertIn('id="tab-backups"',page);self.assertIn('id="tab-yam"',page)
+    page=req('/').read().decode();self.assertIn('id="app"',page);self.assertIn('static/ui/panel.js',page);self.assertTrue(len(req('/static/ui/panel.js').read())>1000)
    finally:
     p.terminate();out=p.communicate(timeout=10)[0]
    self.assertNotIn(b'Traceback',out)

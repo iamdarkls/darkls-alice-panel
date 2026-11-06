@@ -1,0 +1,2 @@
+<script setup lang="ts">import UiIcon from './UiIcon.vue';defineProps<{name:string,detail?:string,status:string}>()</script>
+<template><div class="check-row" :class="'is-'+status"><span class="check-mark" role="img" :aria-label="status==='ok'?'Успешно':status==='error'?'Ошибка':'Внимание'"><UiIcon :name="status==='ok'?'check':status==='error'?'close':'info'"/></span><div class="check-copy"><b>{{ name }}</b><span>{{ detail }}</span></div></div></template>
