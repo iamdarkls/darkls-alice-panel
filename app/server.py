@@ -1456,7 +1456,7 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
         и удаляет /data/quasar/webpanel. yam не трогаем — это отдельный проект со своим удалением."""
         self.adb.shell(
             f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
-            f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; killall aplay 2>/dev/null; "
+            f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; "
             f"grep -q ' {BOOT_TARGET} ' /proc/mounts && {{ umount {BOOT_TARGET} || umount -l {BOOT_TARGET}; }}; "
             f"grep -q ' {SOUND_TARGET} ' /proc/mounts && {{ umount {SOUND_TARGET} || umount -l {SOUND_TARGET}; }}; "
             f"grep -q ' {HOSTS_TARGET} ' /proc/mounts && {{ umount {HOSTS_TARGET} || umount -l {HOSTS_TARGET}; }}; "
@@ -1710,17 +1710,22 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
     def alarm_uninstall(self):
         """Полностью убирает будильник с колонки: демон, будильники, звуки, журнал; хук — если больше не нужен."""
         self.adb.shell(f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
-                       f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; killall aplay 2>/dev/null; "
+                       f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; "
                        f"rm -rf {ALARM_DIR}; rm -f {ALARM_SD} {ALARM_STATE} {ALARM_CMD} {ALARM_FIRE}; true")
         self._drop_hook_if_unused()
         return self.alarms()
 
     def _alarm_daemon(self, restart=False):
         """(Пере)запуск демона. Пока будильник звенит, не трогаем — иначе он оборвётся."""
+        stop = (
+            f"if ! grep -q '^ringing|' {ALARM_STATE} 2>/dev/null; then "
+            f"start-stop-daemon -K -p {ALARM_SD} && rm -f {ALARM_SD}; fi; "
+        ) if restart else ""
         self.adb.shell(
-            f"p=$(cat {ALARM_SD} 2>/dev/null); if kill -0 $p 2>/dev/null; then "
-            + (f"grep -q ringing {ALARM_STATE} 2>/dev/null || {{ kill $p; rm -f {ALARM_SD}; }}; " if restart else "")
-            + f"fi; [ -f {ALARM_SD} ] && kill -0 $(cat {ALARM_SD}) 2>/dev/null || "
+            f'p=$(cat {ALARM_SD} 2>/dev/null); '
+            f'if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then '
+            f'{stop} :; fi; '
+            f'[ -f {ALARM_SD} ] && kill -0 "$(cat {ALARM_SD})" 2>/dev/null || '
             f"start-stop-daemon -S -b -m -p {ALARM_SD} -x /bin/sh -- {ALARMD}")
 
     def alarm_test(self, aid):
@@ -1917,27 +1922,31 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
             "devices": devices,
         }
 
+    def _bt_command(self, command):
+        # Some ADB servers drop the remote status. Check the final success marker as well.
+        out, err, status = self.adb.shell("{ " + command + "; } 2>&1 && echo __BT_OK__", timeout=30, check=False)
+        lines = strip_ansi(out).splitlines()
+        message = "\n".join(line for line in lines if line.strip() != "__BT_OK__")
+        if status or not any(line.strip() == "__BT_OK__" for line in lines) or re.search(
+                r"\b(?:Failed|Error)\b|not available", message, re.IGNORECASE):
+            raise AdbError("Ошибка Bluetooth: " + ((message or err).strip()[-240:] or "команда не выполнена"))
+
     def bt_action(self, data):
-        act, mac = data.get("action"), str(data.get("mac") or "")
+        act, mac = data.get("action"), str(data.get("mac") or "").upper()
         if act in ("connect", "disconnect", "remove", "trust", "untrust"):
             if not re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", mac):
                 raise AdbError("неверный адрес устройства")
-            out, _, _ = self.adb.shell(f"bluetoothctl {act} {mac} 2>&1 | tail -n 2; true", timeout=30, check=False)
-            out = strip_ansi(out)
-            if re.search(r"Failed|not available|Error", out):
-                msg = re.sub(r".*(Failed[^\n]*|Error[^\n]*).*", r"\1", out.strip().replace("\n", " "))
-                raise AdbError({"connect": "Не удалось подключить", "disconnect": "Не удалось отключить",
-                                "remove": "Не удалось забыть"}.get(act, "Ошибка") + f": {msg[:120]}")
+            self._bt_command(f"bluetoothctl {act} {mac}")
         elif act == "pair_on":
             until = int(time.time()) + self.BT_PAIR_SECONDS
-            self.adb.shell(f"bluetoothctl pairable on >/dev/null; bluetoothctl discoverable on >/dev/null; "
-                           f"echo {until} > {self.BT_PAIR_FLAG}")
-            # через 3 минуты сами скрываемся, если флаг не сменился (повторное включение продлевает)
+            self._bt_command("bluetoothctl pairable on && "
+                             "{ bluetoothctl discoverable on || { bluetoothctl pairable off; false; }; }")
+            self.adb.shell(f"echo {until} > {self.BT_PAIR_FLAG}")
             self.detach("bt_pair", f"sleep {self.BT_PAIR_SECONDS}; [ \"$(cat {self.BT_PAIR_FLAG} 2>/dev/null)\" = {until} ] && "
-                                   f"{{ bluetoothctl discoverable off; bluetoothctl pairable off; rm -f {self.BT_PAIR_FLAG}; }}")
+                                   f"{{ bluetoothctl discoverable off && bluetoothctl pairable off && rm -f {self.BT_PAIR_FLAG}; }}")
         elif act == "pair_off":
-            self.adb.shell(f"bluetoothctl discoverable off >/dev/null; bluetoothctl pairable off >/dev/null; "
-                           f"rm -f {self.BT_PAIR_FLAG}; true")
+            self._bt_command("bluetoothctl discoverable off && bluetoothctl pairable off")
+            self.adb.shell(f"rm -f {self.BT_PAIR_FLAG}")
         else:
             raise AdbError("неизвестное действие")
         return self.bt_state()

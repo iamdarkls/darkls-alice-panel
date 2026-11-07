@@ -1,16 +1,21 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import { route,health } from '../composables/state'
+const more = ref(false)
+watch(() => route.active, () => { more.value = false })
 </script>
 <template><aside class="sidebar">
     <a class="brand" href="#home" title="На «Обзор»">
       <svg class="brand-logo" viewBox="-50 -50 100 100" aria-hidden="true"><path fill-rule="evenodd" d="M0-46a46 46 0 1 1 0 92a46 46 0 1 1 0-92ZM0-25c3.5 0 5.6 2 7.6 5.5l13 22.5c2 3.5 2 6.4.3 9.3c-1.8 3-4.4 4.2-8.4 4.2h-25c-4 0-6.6-1.2-8.4-4.2c-1.7-2.9-1.7-5.8.3-9.3l13-22.5C-5.6-23-3.5-25 0-25Z"/></svg>
       <div><b id="model-name">Станция Лайт 2</b><small>DARKLS Alice Panel</small></div>
     </a>
-    <nav class="side" aria-label="Разделы">
+    <nav id="side-sections" class="side" :class="{ 'mobile-open': more }" aria-label="Разделы" @click="more = false" @keydown.esc="more = false">
       <a href="#home" data-tab="home" data-view="home" :class="{ active: route.active === 'home' }"><svg width="20" height="20" aria-hidden="true"><use href="#i-home"/></svg>Главная</a>
       <a href="#overview" data-tab="overview" data-view="overview" :class="{ active: route.active === 'overview' }"><svg width="20" height="20" aria-hidden="true"><use href="#i-grid"/></svg>Обзор</a>
       <a href="#player" data-tab="player" data-view="player" :class="{ active: route.active === 'player' }"><svg width="20" height="20" aria-hidden="true"><use href="#i-music"/></svg>Плеер</a>
       <div class="nav-group" role="presentation">Колонка</div>
+      <a href="#scenes" data-tab="scenes" data-view="scenes" :class="{active:route.active==='scenes'}"><svg width="20" height="20" aria-hidden="true"><use href="#i-layers"/></svg>Сценарии</a>
+      <a href="#wakeword" data-tab="wakeword" data-view="wakeword" :class="{active:route.active==='wakeword'}"><svg width="20" height="20" aria-hidden="true"><use href="#i-chat"/></svg>Активация</a>
       <a href="#alarm" data-tab="alarm" data-view="alarm" :class="{ active: route.active === 'alarm' }"><svg width="20" height="20" aria-hidden="true"><use href="#i-alarm"/></svg>Будильник</a>
       <a href="#boot" data-tab="boot" data-view="boot" :class="{ active: route.active === 'boot' }"><svg width="20" height="20" aria-hidden="true"><use href="#i-power"/></svg>Запуск</a>
       <a href="#apps" data-tab="apps" data-view="apps" :class="{ active: route.active === 'apps' }"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>Приложения</a>
@@ -27,7 +32,10 @@ import { route,health } from '../composables/state'
       <a href="#backups" data-tab="backups" data-view="backups" :class="{ active: route.active === 'backups' }"><svg width="20" height="20" aria-hidden="true"><use href="#i-archive"/></svg>Резервные копии</a>
       <a href="#settings" data-tab="settings" data-view="settings" :class="{ active: route.active === 'settings' }"><svg width="20" height="20" aria-hidden="true"><use href="#i-gear"/></svg>Настройки</a>
     </nav>
-    <p class="nav-scroll-hint">Разделы можно листать вбок →</p>
+    <nav class="mobile-nav" aria-label="Быстрая навигация">
+      <a v-for="(label,key) in {home:'Главная',overview:'Обзор',player:'Плеер'}" :key="key" :href="'#'+key" :aria-current="route.active === key ? 'page' : undefined" @click="more=false">{{ label }}</a>
+      <button type="button" aria-controls="side-sections" :aria-expanded="more" @click="more=!more">Ещё</button>
+    </nav>
     <div class="conn" id="conn-box" hidden>
       <b><span class="dot" id="conn"></span><span id="conn-text">Подключение…</span></b>
       <small id="conn-ip">—</small>

@@ -1,6 +1,7 @@
 import crypto from'node:crypto';import fs from'node:fs';import http from'node:http';import path from'node:path';import assert from'node:assert/strict';import{fileURLToPath}from'node:url';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||new URL('../frontend/node_modules/playwright-core/index.mjs',import.meta.url).href)
 const root=fileURLToPath(new URL('../app',import.meta.url)),calls=[],errors=[];let unauthorized=false,webReady=true,mediaReady=false,termConnections=0;
+let scenes={};
 const status={hostname:'Yandex-Mini-gen3-Pro-TEST',hardware_model:'pickle',ip_address:'192.168.50.168',temp:42000,mem_total:480000,mem_avail:300000,uptime:10000,load:'0.1 0.2 0.3',vol_level:100,vol_bt:100,quasar:'running',quasar_version:'factory-12',device_id:'TEST',ssid:'TEST',kernel:'5.4.242',date:'2026-11-06',ffmpeg:true,color:'blue'}
 function fixture(p,body){
  if(p==='/api/conn')return{state:'online',serial:'192.168.50.168:5555',log:[]};if(p==='/api/status')return status;
@@ -14,6 +15,12 @@ function fixture(p,body){
  if(p==='/api/yam2/action'&&body.action==='search')return{items:[{name:'test/demo',version:'1.0.0',summary:'Test catalogue'}]};
  if(p==='/api/native/updates')return{installed:'0.7.0',feed:'https://github.com/owner/repo/releases/latest/download/update.json',auto:false,previous:'0.6.5-old',auto_cleanup:true,free:60*1048576,required_free:52*1048576,cleanup:{checked:1700000000,removed:['releases/old'],freed:1048576},status:{checked:1700000000,available:true,latest:'0.7.1',notes:'New changes'}};
  if(p==='/api/native/media')return{available:mediaReady,detail:mediaReady?'Audio ready':'WAV only'};if(p==='/api/native/media/install'){mediaReady=true;return{ok:true}};
+ if(p==='/api/native/scenes'){
+  if(body.action==='save')scenes={demo:{name:body.name,steps:body.steps,at:body.at,days:body.days}};
+  return{items:scenes,running:null,history:[],time:'2026-11-06T16:00:00'};
+ }
+ if(p==='/api/native/wakeword')return{installed:true,enabled:true,ready:true,audio:{ok:true},words:[{id:'hello',name:'Привет',enabled:true}],bindings:{}};
+ if(p==='/api/native/assistant')return{installed:false,enabled:false,running:false,confirmed:false,url:'',model:'',has_key:false,history:[],error:''};
  if(p==='/api/native/voice')return{url:'https://voice.test',has_token:true,compatibility_confirmed:false,note:'Unverified Mini 3 Pro'};
  if(p==='/api/native/voice/status')return{agent:'darkls-voice-agent',state:{ActiveState:'inactive'}};
  if(p==='/api/native/diagnostics')return{created:1700000000,firmware:'factory-12',checks:[{name:'Storage',status:'ok',detail:'100 MB'}]};
@@ -45,11 +52,24 @@ try{
  await tab('chatgpt');await page.locator('#voice-url').fill('https://draft.voice.test');await tab('apps');await tab('chatgpt');assert.equal(await page.locator('#voice-url').inputValue(),'https://draft.voice.test');assert.equal(await page.locator('#voice-start').isDisabled(),true);assert.equal(await page.locator('#voice-token').inputValue(),'');await page.locator('#voice-status').click();await page.waitForTimeout(100);assert.match(await page.locator('#voice-result').textContent(),/darkls-voice-agent/);
  await tab('updates');await page.locator('#native-feed').fill('https://github.com/owner/draft/releases/latest/download/update.json');await tab('apps');await tab('updates');assert.equal(await page.locator('#native-feed').inputValue(),'https://github.com/owner/draft/releases/latest/download/update.json');assert.match(await page.locator('#native-space').textContent(),/60.0 МБ/);await page.locator('#native-cleanup').click();await page.waitForTimeout(100);assert(calls.some(c=>c.api==='/api/native/updates/cleanup'&&c.method==='POST'));
  await tab('diagnostics');await page.locator('#diagnostic-run').click();await page.waitForTimeout(100);assert.equal(await page.locator('#diagnostic-checks .check-row').count(),1);assert.equal(await page.locator('#diagnostic-save').isDisabled(),false);
+ await tab('scenes');await page.getByLabel('Название',{exact:true}).fill('Утро');
+ await page.getByLabel('Действие',{exact:true}).selectOption('if-weekend');
+ await page.locator('.scene-branch select').selectOption('volume');
+ await page.getByRole('button',{name:'Сохранить сценарий'}).click();
+ await page.getByText('Утро',{exact:true}).waitFor();
+ assert(calls.some(c=>c.api==='/api/native/scenes'&&c.body.steps?.[0]?.value?.[0]?.kind==='volume'));
+ await tab('wakeword');await page.getByLabel('Действие для Привет').selectOption('demo');
+ await page.waitForTimeout(100);assert(calls.some(c=>c.api==='/api/native/wakeword'&&c.body.scene==='demo'));
  for(const name of ['home','overview','player','alarm','charts','boot','files','logs','console','settings','backups'])await tab(name);
  const connectionCount=termConnections;assert(connectionCount>0);await tab('apps');await tab('console');assert.equal(termConnections,connectionCount,'Switching tabs must preserve terminal session');
  await tab('settings');await page.locator('#media-install').click();await page.waitForTimeout(100);assert(calls.some(c=>c.api==='/api/native/media/install'));await tab('settings');
  assert.equal(await page.locator('nav.side a:not(:has(svg))').count(),0);
- await page.setViewportSize({width:390,height:844});await tab('yam');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);await page.setViewportSize({width:320,height:740});await tab('apps');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
+ await page.setViewportSize({width:390,height:844});
+ await page.getByRole('button',{name:'Ещё',exact:true}).click();
+ await page.locator('nav.side a[data-tab="console"]').click();
+ await page.locator('[data-term-key="interrupt"]').waitFor({state:'visible'});
+ assert.equal(await page.locator('nav.side').isVisible(),false);
+ await tab('yam');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);await page.setViewportSize({width:320,height:740});await tab('apps');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
  await page.setViewportSize({width:1360,height:1000});await page.emulateMedia({colorScheme:'light'});assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgb(246, 246, 248)');
  assert.equal(errors.length,0,'Page errors: '+errors.join('; '));
  await page.goto('http://127.0.0.1:'+server.address().port+'/speaker/test/#apps');await page.waitForFunction(()=>document.documentElement.dataset.appReady==='true');await page.waitForTimeout(100);assert(calls.some(c=>c.path==='/speaker/test/api/apps'));assert.equal(await page.locator('#speaker-select').count(),1);
@@ -64,5 +84,5 @@ try{
    }if(mode==='old')fs.writeFileSync('/tmp/vue-layout/old-icons.json',JSON.stringify(await p.locator('h1,h2,h3,button.btn,a.btn').evaluateAll(nodes=>nodes.map(e=>({id:e.id,text:e.textContent.trim(),icon:e.querySelector('svg use')?.getAttribute('href')})))));await p.close();
   }fs.writeFileSync('/tmp/vue-layout/measurements.json',JSON.stringify(measures,null,2));
  }
- console.log('Vue production UI: 16 tabs, actions, retained forms/terminal session, local icons, 320/390/1360px, themes, speaker context, login: OK');
+ console.log('Vue production UI: 18 tabs, actions, retained forms/terminal session, local icons, 320/390/1360px, themes, speaker context, login: OK');
 }finally{await browser.close();await new Promise(r=>server.close(r))}
