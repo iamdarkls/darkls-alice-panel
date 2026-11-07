@@ -228,7 +228,7 @@ class ProcessTests(unittest.TestCase):
             (bad / 'DARKLS_VERSION').write_text('0.2.1')
             (bad / 'native.py').write_text('raise SystemExit(7)')
             (good / 'native.py').write_text('''import argparse,json,os\nfrom http.server import BaseHTTPRequestHandler,HTTPServer\np=argparse.ArgumentParser();p.add_argument('--port',type=int);a,_=p.parse_known_args()\nclass H(BaseHTTPRequestHandler):\n def log_message(self,*args):pass\n def do_GET(self):\n  b=json.dumps(dict(native=True,root=True,pid=os.getpid(),version='0.2.0')).encode();self.send_response(200);self.end_headers();self.wfile.write(b)\nHTTPServer(('127.0.0.1',a.port),H).serve_forever()\n''')
-            shutil.copy2(ROOT / 'supervisor.py', base / 'supervisor.py')
+            shutil.copy2(ROOT / 'deploy/device/supervisor.py', base / 'supervisor.py')
             shutil.copy2(APP / 'native_updates.py', base / 'native_updates.py')
             updates.atomic_json(base / 'config.json', dict(device_ip='127.0.0.1', port=port))
             updates.point(base, 'previous', good)

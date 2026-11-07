@@ -2,7 +2,7 @@ name: Panel release
 on:
   push:
     branches: [main]
-    paths: ['app/**', 'frontend/**', 'tests/**', 'build-release.py', 'release-notes.txt', '.github/workflows/release.yml']
+    paths: ['app/**', 'frontend/**', 'tests/**', 'scripts/**', 'deploy/**', 'docs/release-notes.txt', '.github/workflows/release.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -38,7 +38,7 @@ jobs:
           node --check app/static/ui-kit.js
           node --check --input-type=module < app/static/ui/panel.js
       - name: Build application and manifest
-        run: python build-release.py --repository "$GITHUB_REPOSITORY"
+        run: python scripts/release/build-release.py --repository "$GITHUB_REPOSITORY"
       - name: Publish version once
         env:
           GH_TOKEN: ${{ github.token }}
@@ -49,7 +49,7 @@ jobs:
             echo "Release v$version already exists; leaving it intact."
             exit 0
           fi
-          gh release create "v$version" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "DARKLS Alice Panel $version" --notes-file release-notes.txt dist/app.tar.gz dist/update.json dist/source.zip
+          gh release create "v$version" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "DARKLS Alice Panel $version" --notes-file docs/release-notes.txt dist/app.tar.gz dist/update.json dist/source.zip
       - name: Keep manifest reference current
         env:
           GH_TOKEN: ${{ github.token }}

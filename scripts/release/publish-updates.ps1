@@ -5,7 +5,13 @@ param(
  [string]$DeviceIp = '192.168.50.168'
 )
 $ErrorActionPreference='Stop'
-Set-Location $PSScriptRoot
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$artifactDir = Join-Path $repoRoot 'dist'
+$archivePath = Join-Path $artifactDir 'app.tar.gz'
+$manifestPath = Join-Path $artifactDir 'update.json'
+$sourcePath = Join-Path $artifactDir 'source.zip'
+$notesPath = Join-Path $repoRoot 'docs\release-notes.txt'
+$configureFeed = Join-Path $repoRoot 'deploy\device\configure-feed.py'
 if ($Repository -notmatch '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$') { throw 'Use owner/repository' }
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'Install GitHub CLI: winget install --id GitHub.cli --exact. Then reopen PowerShell.' }
 & gh auth status
@@ -25,19 +31,19 @@ if ($LASTEXITCODE -ne 0) {
  & gh api --method PUT "repos/$Repository/contents/README.md" -f 'message=Initialize panel update repository' -f "content=$readme" | Out-Null
  if ($LASTEXITCODE -ne 0) { throw 'Initial commit failed' }
 }
-$meta=Get-Content -Raw .\release.json | ConvertFrom-Json
+$meta=Get-Content -Raw -LiteralPath (Join-Path $artifactDir 'release.json') | ConvertFrom-Json
 $version=$meta.version
-if ((Get-FileHash .\app.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant() -ne $meta.sha256) { throw 'Application archive checksum mismatch' }
-$sourceCommit=& .\sync-source.ps1 -Repository $Repository
+if ((Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $meta.sha256) { throw 'Application archive checksum mismatch' }
+$sourceCommit=& (Join-Path $PSScriptRoot 'sync-source.ps1') -Repository $Repository
 if ($sourceCommit -notmatch '^[a-f0-9]{40}$') { throw 'Source commit was not confirmed' }
-$notes=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'release-notes.txt'), [Text.Encoding]::UTF8)
+$notes=[IO.File]::ReadAllText($notesPath, [Text.Encoding]::UTF8)
 $manifest=[ordered]@{schema=1;target='aarch64-linux-gnu';version=$version;min_python='3.14';url="https://github.com/$Repository/releases/download/v$version/app.tar.gz";sha256=$meta.sha256;size=$meta.size;notes=$notes;published=[DateTime]::UtcNow.ToString('o')}
 $utf8=New-Object System.Text.UTF8Encoding($false)
 $manifestJson=$manifest|ConvertTo-Json -Depth 5
 if ([Text.Encoding]::UTF8.GetByteCount($manifestJson) -gt 65536) { throw 'Manifest exceeds 64 KiB. Release notes must be plain text.' }
-[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'update.json'),$manifestJson,$utf8)
+[IO.File]::WriteAllText($manifestPath,$manifestJson,$utf8)
 # Never overwrite a published release silently. A reused version must be inspected manually.
-& gh release create "v$version" --repo $Repository --target $sourceCommit --title "DARKLS Alice Panel $version" --notes-file .\release-notes.txt .\app.tar.gz .\update.json .\source.zip
+& gh release create "v$version" --repo $Repository --target $sourceCommit --title "DARKLS Alice Panel $version" --notes-file $notesPath $archivePath $manifestPath $sourcePath
 if ($LASTEXITCODE -ne 0) { throw 'Release publication failed. Existing release/assets were not replaced.' }
 $feed="https://github.com/$Repository/releases/latest/download/update.json"
 Write-Host "Published. Panel update feed: $feed"
@@ -53,7 +59,7 @@ if (Test-Path -LiteralPath $AdbPath) {
   if ($LASTEXITCODE -ne 0) { throw 'ADB connect failed. Set the feed in panel manually.' }
   & $AdbPath -s "${DeviceIp}:5555" push $local $remote
   if ($LASTEXITCODE -ne 0) { throw 'Feed upload failed. Set it in panel manually.' }
-  & $AdbPath -s "${DeviceIp}:5555" push .\configure-feed.py "$remote.py"
+  & $AdbPath -s "${DeviceIp}:5555" push $configureFeed "$remote.py"
   if ($LASTEXITCODE -ne 0) { throw 'Configurator upload failed' }
   $result=& $AdbPath -s "${DeviceIp}:5555" shell "PYTHONPATH=/data/darkls-alice/current /data/darkls-alice/runtime/python/bin/python3 $remote.py $remote"
   $result | ForEach-Object { Write-Host $_ }

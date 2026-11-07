@@ -103,7 +103,7 @@ class Features(unittest.TestCase):
 
 class Agent(unittest.TestCase):
  def test_agent_auth_and_exact_unit_allowlist(self):
-  spec=importlib.util.spec_from_file_location('agent',ROOT/'linux-agent/voice_agent.py');agent=importlib.util.module_from_spec(spec);spec.loader.exec_module(agent)
+  spec=importlib.util.spec_from_file_location('agent',ROOT/'deploy/voice-agent/voice_agent.py');agent=importlib.util.module_from_spec(spec);spec.loader.exec_module(agent)
   with tempfile.TemporaryDirectory() as td:
    cfg=Path(td)/'agent.json';cfg.write_text(json.dumps(dict(token='x'*32,unit='test-voice.service',compatibility_confirmed=False)))
    with patch.object(agent,'CONFIG',cfg),patch.object(agent.subprocess,'run',return_value=subprocess.CompletedProcess([],0,'LoadState=loaded\nActiveState=inactive\nSubState=dead\n','')) as run:

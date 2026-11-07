@@ -3,7 +3,11 @@ param(
  [string]$AdbPath = "$env:USERPROFILE\Downloads\platform-tools\adb.exe"
 )
 $ErrorActionPreference = 'Stop'
-Set-Location $PSScriptRoot
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$artifactDir = Join-Path $repoRoot 'dist'
+$deviceScripts = Join-Path $repoRoot 'deploy\device'
+$archivePath = Join-Path $artifactDir 'app.tar.gz'
+$metadataPath = Join-Path $artifactDir 'release.json'
 $ipObject=$null
 if (-not [System.Net.IPAddress]::TryParse($DeviceIp,[ref]$ipObject) -or $ipObject.AddressFamily -ne 'InterNetwork') { throw 'IPv4 required' }
 if (-not (Test-Path -LiteralPath $AdbPath)) { throw 'ADB not found' }
@@ -15,12 +19,17 @@ function AdbRun([string[]]$Arguments) {
 AdbRun -Arguments @('connect',$serial)
 $identity=& $AdbPath -s $serial shell id
 if ($identity -notmatch 'uid=0\(') { throw 'Root required' }
-$meta=Get-Content -Raw .\release.json | ConvertFrom-Json
-if ((Get-FileHash .\app.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant() -ne $meta.sha256) { throw 'Archive checksum mismatch' }
+$meta=Get-Content -Raw -LiteralPath $metadataPath | ConvertFrom-Json
+if ((Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $meta.sha256) { throw 'Archive checksum mismatch' }
 $stage='/tmp/darkls-upgrade-'+[guid]::NewGuid().ToString('N')
 AdbRun -Arguments @('-s',$serial,'shell',"mkdir -p $stage && chmod 700 $stage")
-foreach ($file in @('app.tar.gz','release.json','native_updates.py','native_features.py','upgrade-device.py')) {
- AdbRun -Arguments @('-s',$serial,'push',(Join-Path $PSScriptRoot $file),"$stage/$file")
+$files = @($archivePath, $metadataPath)
+foreach ($file in @('native_updates.py', 'native_features.py', 'upgrade-device.py')) {
+ $files += Join-Path $deviceScripts $file
+}
+foreach ($file in $files) {
+ $name = Split-Path -Leaf $file
+ AdbRun -Arguments @('-s',$serial,'push',$file,"$stage/$name")
 }
 # A secret backup is made before activating the update. Save it locally even on failure.
 $output=& $AdbPath -s $serial shell "/data/darkls-alice/runtime/python/bin/python3 -u $stage/upgrade-device.py $stage"

@@ -18,7 +18,7 @@
 ```sh
 npm ci --prefix frontend
 npm run build --prefix frontend
-python build-release.py --repository iamdarkls/darkls-alice-panel
+python scripts/release/build-release.py --repository iamdarkls/darkls-alice-panel
 ```
 
 Версии и integrity зависимостей закреплены package-lock.json. TypeScript 6.0.3 выбран из-за несовместимости vue-tsc 3.3.14 с новым пакетом TypeScript 7 (не экспортируется lib/tsc). Проверка типов обязательна до Vite build.

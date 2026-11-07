@@ -1,5 +1,7 @@
 param([Parameter(Mandatory=$true)][string]$Repository)
 $ErrorActionPreference='Stop'
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$artifactDir = Join-Path $repoRoot 'dist'
 if ($Repository -notmatch '^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$') { throw 'Use owner/repository' }
 $utf8=New-Object System.Text.UTF8Encoding($false)
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('darkls-source-'+[guid]::NewGuid().ToString('N'))
@@ -25,7 +27,7 @@ try {
  $head=$ref.object.sha
  $baseCommit=ApiJson -Endpoint "repos/$Repository/git/commits/$head"
  $source=Join-Path $temp 'source'
- Expand-Archive -LiteralPath (Join-Path $PSScriptRoot 'source.zip') -DestinationPath $source
+ Expand-Archive -LiteralPath (Join-Path $artifactDir 'source.zip') -DestinationPath $source
  $entries=New-Object System.Collections.Generic.List[object]
  $files=@(Get-ChildItem -LiteralPath $source -Recurse -File)
  $count=0
@@ -43,7 +45,7 @@ try {
   Write-Host 'Source is already up to date.'
   return $head
  }
- $version=(Get-Content -Raw (Join-Path $PSScriptRoot 'release.json') | ConvertFrom-Json).version
+ $version=(Get-Content -Raw (Join-Path $artifactDir 'release.json') | ConvertFrom-Json).version
  $commit=ApiJson -Endpoint "repos/$Repository/git/commits" -Method POST -Body @{message="Publish native panel source $version";tree=$tree.sha;parents=@($head)}
  # Non-force update rejects concurrent changes rather than overwriting them.
  $null=ApiJson -Endpoint "repos/$Repository/git/refs/heads/$branchPath" -Method PATCH -Body @{sha=$commit.sha;force=$false}

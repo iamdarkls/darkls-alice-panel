@@ -2,7 +2,7 @@
 import argparse,gzip,hashlib,io,json,os,tarfile,zipfile
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--repository',required=True);a=p.parse_args()
-root=Path(__file__).resolve().parent
+root=Path(__file__).resolve().parents[2]
 # Refuse a source release whose generated Vue assets are stale or absent.
 if (root/'frontend').is_dir():
  source=list((root/'frontend/src').rglob('*'))
@@ -23,7 +23,7 @@ with (out/'app.tar.gz').open('wb') as raw,gzip.GzipFile(fileobj=raw,mode='wb',mt
   member=tarfile.TarInfo(str(f.relative_to(app)));blob=f.read_bytes();member.size=len(blob);member.mode=0o755 if f.suffix in ('.sh','.command') else 0o644;member.mtime=0;tf.addfile(member,io.BytesIO(blob))
 blob=(out/'app.tar.gz').read_bytes()
 meta=dict(version=version,sha256=hashlib.sha256(blob).hexdigest(),size=len(blob))
-notes=(root/'release-notes.txt').read_text()
+notes=(root/'docs/release-notes.txt').read_text()
 manifest=dict(schema=1,target='aarch64-linux-gnu',version=version,min_python='3.14',url=f'https://github.com/{a.repository}/releases/download/v{version}/app.tar.gz',sha256=meta['sha256'],size=meta['size'],notes=notes)
 value=json.dumps(manifest,ensure_ascii=False,indent=2)+'\n'
 if len(value.encode())>65536:raise SystemExit('Manifest too large')
