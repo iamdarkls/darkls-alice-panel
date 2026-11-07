@@ -232,6 +232,8 @@ def install(module):
     native_features.install(module, updates)
     import native_yam2
     native_yam2.install(module, updates.base)
+    import native_automation
+    native_automation.install(module, updates.base)
 
 
 def main():

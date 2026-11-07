@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OnDeviceAssistant from '../components/OnDeviceAssistant.vue'
 import UiIcon from '../components/UiIcon.vue'
 import{ref}from'vue';import{useApi,useAction,useEvents}from'../composables/api';import{route}from'../composables/state'
 const api=useApi(),url=ref(''),token=ref(''),compatible=ref(false),hasToken=ref(false),note=ref(''),{busy,message,run}=useAction()
@@ -14,4 +15,4 @@ void load();useEvents(()=>{if(route.active==='chatgpt')void load()})
 <label>Токен агента<input class="field" id="voice-token" type="password" autocomplete="new-password" v-model="token" :placeholder="hasToken?'Сохранён. Оставь пустым, чтобы сохранить':'Токен агента'"></label>
 <label class="toggle"><span>Совместимость аудио с этой колонкой проверена вручную</span><input type="checkbox" id="voice-compatible" v-model="compatible"></label>
 <div class="row"><button class="btn" id="voice-save" @click="save" :disabled="busy"><UiIcon name="check"/>Сохранить</button><button class="btn" id="voice-status" @click="service('status')" :disabled="busy"><UiIcon name="info"/>Проверить связь</button></div><pre class="out" id="voice-result">{{ message }}</pre>
-<div class="row"><button class="btn primary" id="voice-start" @click="service('start')" :disabled="busy||!compatible"><UiIcon name="play"/>Запустить</button><button class="btn" id="voice-stop" @click="service('stop')" :disabled="busy"><UiIcon name="stop"/>Остановить</button><button class="btn" id="voice-restart" @click="service('restart')" :disabled="busy||!compatible"><UiIcon name="refresh"/>Перезапустить</button></div></section></template>
+<div class="row"><button class="btn primary" id="voice-start" @click="service('start')" :disabled="busy||!compatible"><UiIcon name="play"/>Запустить</button><button class="btn" id="voice-stop" @click="service('stop')" :disabled="busy"><UiIcon name="stop"/>Остановить</button><button class="btn" id="voice-restart" @click="service('restart')" :disabled="busy||!compatible"><UiIcon name="refresh"/>Перезапустить</button></div></section><OnDeviceAssistant/></template>

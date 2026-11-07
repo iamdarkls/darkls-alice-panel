@@ -23,7 +23,7 @@ from urllib.parse import urlsplit, parse_qs
 from native_updates import atomic_json, load_json, point
 
 MAX_BACKUP = 16 * 1024 * 1024
-SAFE_DATA = {'.panel_settings.json', '.yandex_auth.json', 'voice.json'}
+SAFE_DATA = {'.panel_settings.json', '.yandex_auth.json', 'voice.json', 'scenes.json'}
 DEVICE_FILES = ('/data/launch-no-update.json', '/system/vendor/quasar/launch.json',
                 '/etc/init.d/S99darkls', '/etc/init.d/S99yam', '/system/vendor/quasar/onboot.sh',
                 '/system/vendor/quasar/activate_adb.sh', '/system/vendor/quasar/adb_options.inc',

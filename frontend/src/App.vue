@@ -23,6 +23,8 @@ import BootPage from './pages/BootPage.vue'
 import FilesPage from './pages/FilesPage.vue'
 import LogsPage from './pages/LogsPage.vue'
 import ConsolePage from './pages/ConsolePage.vue'
+import ScenesPage from './pages/ScenesPage.vue'
+import WakewordPage from './pages/WakewordPage.vue'
 const start=useDeviceControls(),fatal=ref(''),reload=()=>location.reload()
 onMounted(async()=>{try{await start();document.documentElement.dataset.appReady='true'}catch(e){fatal.value=(e as Error).message}})
 onBeforeUnmount(()=>removeEventListener('hashchange',syncRoute))
@@ -47,4 +49,6 @@ watch(()=>route.active,(next,old)=>{if(next!==old)window.scrollTo({top:0})})
 <main id="tab-files" data-page :hidden="route.active !== 'files' || (!online && !direct.has(route.active))"><FilesPage/></main>
 <main id="tab-logs" data-page :hidden="route.active !== 'logs' || (!online && !direct.has(route.active))"><LogsPage/></main>
 <main id="tab-console" data-page :hidden="route.active !== 'console' || (!online && !direct.has(route.active))"><ConsolePage/></main>
+<main :hidden="!online || route.active !== 'scenes'" id="tab-scenes" data-page><ScenesPage/></main>
+<main :hidden="!online || route.active !== 'wakeword'" id="tab-wakeword" data-page><WakewordPage/></main>
 </div><DeviceOverlays/><div v-if="fatal" class="card" role="alert">{{fatal}} <button class="btn" @click="reload">Повторить загрузку</button></div></template>

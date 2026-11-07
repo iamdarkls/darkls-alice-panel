@@ -804,6 +804,20 @@ $('#term-new').onclick = () => {
   termConnect();
 };
 
+
+const termKeys = { esc: '\x1b', tab: '\t', up: '\x1b[A', down: '\x1b[B',
+  left: '\x1b[D', right: '\x1b[C', interrupt: '\x03', eof: '\x04' };
+listen($('.term-keys'), 'pointerdown', e => { if (e.target.closest('[data-term-key]')) e.preventDefault(); });
+listen($('.term-keys'), 'click', e => {
+  const d = termKeys[e.target.closest('[data-term-key]')?.dataset.termKey];
+  if (d && termWs?.readyState === 1) termWs.send(JSON.stringify({ t: 'i', d }));
+});
+if (window.visualViewport) {
+  const fitMobile = () => $('#tab-console').style.setProperty('--visual-height', window.visualViewport.height + 'px');
+  listen(window.visualViewport, 'resize', fitMobile);
+  fitMobile();
+}
+
 // ---------- вкладки ----------
 const store = {
   get: k => { try { return localStorage.getItem(PanelContext.storageKey(k)); } catch { return null; } },
@@ -1104,6 +1118,25 @@ function musicAction(a, btn) {
   });
   if (a === 'dislike') return act(btn, () => api('/api/music/dislike', { id: p.id }), 'Дизлайк — дальше');
 }
+let coverStart;
+const touchCover = $('.pl-cover');
+listen(touchCover, 'pointerdown', e => {
+  if (e.pointerType === 'touch' && e.isPrimary) {
+    coverStart = {id:e.pointerId,x:e.clientX,y:e.clientY};
+    touchCover.setPointerCapture(e.pointerId);
+  }
+});
+listen(touchCover, 'pointercancel', () => { coverStart = undefined; });
+listen(touchCover, 'pointerup', e => {
+  if (coverStart?.id !== e.pointerId) return;
+  const dx = e.clientX - coverStart.x, dy = e.clientY - coverStart.y;
+  coverStart = undefined;
+  if (!muHas()) return;
+  const action = Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.5
+    ? (dx < 0 ? 'next' : 'prev') : Math.hypot(dx,dy) < 12 ? 'play' : null;
+  const button = action && $('#tab-player [data-mu="' + action + '"]');
+  if (button && !button.disabled) button.click();
+});
 listen(document, 'click', e => {
   const b = e.target.closest('[data-mu]');
   if (b) return musicAction(b.dataset.mu, b);

@@ -27,7 +27,7 @@ log() {
 
 # Громкость Алисы 0–10 → значение ALSA Master (как platformToAlsaMap у Quasar: 0→0, 1→49, 20→255).
 alsa_of() { p=$(($1 * 2)); [ $p -le 0 ] && echo 0 || echo $((49 + (p - 1) * 206 / 19)); }
-get_alsa() { amixer get Master | sed -n 's/.*Front Left: Playback \([0-9]*\).*/\1/p'; }
+get_alsa() { amixer get Master | sed -n 's/.*\(Front Left\|Mono\): Playback \([0-9]*\).*/\2/p'; }
 set_alsa() { amixer -q set Master "$1" 2>/dev/null; }
 
 playing() { grep -q "state: RUNNING" /proc/asound/card*/pcm*p/sub*/status 2>/dev/null; }
@@ -50,8 +50,9 @@ alice() {
 }
 
 # Кольцо — через framebuffer, как у самого Quasar; после будильника возвращаем его Quasar.
-ring() { echo -e -n "$1$1$1" > /dev/fb0 2>/dev/null; }
+ring() { [ -e /sys/class/leds/plum:red:ring1/trigger ] || return 0; echo -e -n "$1$1$1" > /dev/fb0 2>/dev/null; }
 ring_release() {
+    [ -e /sys/class/leds/plum:red:ring1/trigger ] || return 0
     for n in $RING_LEDS; do
         t=/sys/class/leds/plum:$n/trigger
         grep -q '\[led_ring_fb\]' $t || echo led_ring_fb > $t
@@ -70,6 +71,16 @@ wait_alice() {
     done
     return 1
 }
+
+stop_player() {
+    if [ -n "$apid" ]; then
+        kill "$apid" 2>/dev/null; wait "$apid" 2>/dev/null
+        apid=
+        [ -z "$orig" ] || set_alsa "$orig"
+        ring_release
+    fi
+}
+trap 'stop_player; echo idle > "$STATE"; exit 0' TERM INT
 
 fire() {
     id=$1 mode=$2 query=$3 sound=$4 vol=$5 ramp=$6 dur=$7 snz=$8
@@ -101,7 +112,16 @@ fire() {
         f=$D/$sound; [ -f "$f" ] || f=$D/default.wav
         log "$id: звук $(basename "$f")"
         set_alsa $start
-        (while [ ! -f $CMD ]; do aplay -q "$f" 2>/dev/null || sleep 1; done) &
+        (
+            player=
+            trap '[ -z "$player" ] || kill "$player" 2>/dev/null; exit 0' TERM INT
+            while [ ! -f $CMD ]; do
+                aplay -q "$f" 2>/dev/null &
+                player=$!
+                wait "$player" || sleep 1
+                player=
+            done
+        ) &
         apid=$!
     fi
     # Кнопка Алисы или голос («Алиса, …») выключают будильник. Следим за новыми строками лога maind.
@@ -134,9 +154,7 @@ fire() {
     [ -z "$why" ] && why=stop
     touch $CMD
     if [ -n "$apid" ]; then
-        kill $apid 2>/dev/null; killall aplay 2>/dev/null; sleep 0.3; killall aplay 2>/dev/null
-        set_alsa $orig
-        ring_release
+        stop_player
     elif [ "$why" != ended ]; then
         alice "стоп"
     fi
@@ -160,12 +178,16 @@ EOF
     fire "$id" "$mode" "$query" "$sound" "${vol:-5}" "${ramp:-0}" "${dur:-0}" "${snz:-9}" < /dev/null
 }
 
-check_minute() {
-    now=$(date +%H:%M) dow=$(date +%u) stamp=$(date +%Y%m%d%H%M) ep=$(date +%s)
+check_snooze() {
+    ep=$(date +%s)
     if [ -f $SNOOZE ]; then
         IFS='|' read -r sat sid < $SNOOZE
         if [ "$ep" -ge "${sat:-0}" ]; then rm -f $SNOOZE; run_id "$sid"; fi
     fi
+}
+
+check_minute() {
+    now=$(date +%H:%M) dow=$(date +%u) stamp=$1
     [ -f $CONF ] || return
     due=
     while IFS='|' read -r id on tm days mode rest; do
@@ -176,19 +198,20 @@ check_minute() {
         [ -z "$days" ] && sed -i "s/^$id|1|/$id|0|/" $CONF
         due="$due $id"
     done < $CONF
-    [ -f $LAST ] && tail -n 50 $LAST > $LAST.t && mv $LAST.t $LAST
+    [ -n "$due" ] && [ -f $LAST ] && tail -n 50 $LAST > $LAST.t && mv $LAST.t $LAST
     for id in $due; do run_id "$id"; done
 }
 
 echo idle > $STATE
 log "запущен, время на колонке $(date '+%H:%M %Z')"
+last_minute=
 while :; do
-    check_minute
-    # До начала следующей минуты; раз в секунду проверяем «проверить сейчас» из панели.
-    s=$(date +%S); s=${s#0}
-    i=$((60 - s))
-    while [ $i -gt 0 ]; do
-        if [ -f $FIRE ]; then id=$(cat $FIRE); rm -f $FIRE; log "$id: проверка из панели"; run_id "$id"; break; fi
-        sleep 1; i=$((i - 1))
-    done
+    if [ -f $FIRE ]; then id=$(cat $FIRE); rm -f $FIRE; log "$id: проверка из панели"; run_id "$id"; fi
+    [ ! -f $SNOOZE ] || check_snooze
+    minute=$(date +%Y%m%d%H%M)
+    if [ "$minute" != "$last_minute" ]; then
+        last_minute=$minute
+        check_minute "$minute"
+    fi
+    sleep 1
 done
