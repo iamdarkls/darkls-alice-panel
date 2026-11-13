@@ -42,7 +42,7 @@
     </section>
     </div>
 
-    <div class="cols">
+    <div class="cols overview-columns">
       <div class="col wzone" id="wz-left">
         <!-- 3D-модель -->
         <div class="model-view" id="model-view" data-widget="model" data-title="3D-модель" role="img" aria-label="3D-модель колонки: дисплей и кольцо повторяют настоящие"><canvas id="model-viz" aria-hidden="true"></canvas></div>
@@ -195,6 +195,7 @@
           <dl class="kv" id="dev-info"><dt>…</dt><dd></dd></dl>
         </section>
       </div>
+      <div class="col wzone" id="wz-extra" aria-label="Дополнительная зона виджетов"></div>
     </div>
     <div id="wz-hidden" hidden></div>
 

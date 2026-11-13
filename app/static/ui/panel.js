@@ -5489,7 +5489,7 @@ function createDeviceControls(context) {
 			serial,
 			...uids
 		].filter((v) => v && v.length >= 4)) t = t.split(v).join("••••");
-		return t.replace(/\b(?:y0_|AQAAAA)[\w-]{10,}/g, "••••").replace(/(token["']?\s*[:=]\s*["']?)[\w.-]{20,}/gi, "$1••••").replace(/(\b[Aa]ccount[ :=]+)\d{5,}/g, "$1••••").replace(/("wifi_hash"\s*:\s*")[0-9a-f]+/g, "$1••••").replace(/\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b/gi, "••:••:••:••:••:••");
+		return t.replace(/\b(?:y0_|AQAAAA)[\w-]{10,}/g, "••••").replace(/\b(sk|rk|pk|gsk|xai)-[\w-]{8,}/g, "$1-••••").replace(/(\b(?:bearer|basic)\s+)[\w.~+/=-]+/gi, "$1••••").replace(/(\b(?:[\w-]*token|api[_-]?key|sign(?:ature)?|secret|password|endpoint[_-]?(?:id|uuid)?|(?:device|account|session|request)[_-]?id|serial(?:[_-]?number)?|wifi_hash|ssid|bssid)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\s"'&,;<>{}\[\]]+)/gi, "$1••••").replace(/\b[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}\b/gi, "••••").replace(/(\b[Aa]ccount[ :=]+)\d{5,}/g, "$1••••").replace(/("wifi_hash"\s*:\s*")[0-9a-f]+/g, "$1••••").replace(/\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b/gi, "••:••:••:••:••:••");
 	}
 	function renderLog() {
 		const f = $("#log-filter").value.toLowerCase();
@@ -5854,8 +5854,8 @@ function createDeviceControls(context) {
 		}
 		stopQr();
 		const g = i.glagol, s = g.state, p = s?.playerState, has = muHas();
-		const isBt = p?.playerType === "bluetooth";
-		document.body.classList.toggle("mu-bt", isBt);
+		const isBt = p?.playerType === "bluetooth", isZvuk = p?.playerType === "zvuk";
+		document.body.classList.toggle("mu-bt", isBt || isZvuk);
 		$("#mu-err").hidden = g.connected;
 		$("#mu-err").textContent = g.connected ? "" : g.error || "Подключаемся к колонке…";
 		const title = has ? p.title : "Ничего не играет";
@@ -5912,19 +5912,22 @@ function createDeviceControls(context) {
 			$$("input.mu-vol").forEach((r) => r.value = Math.round(s.volume * 100));
 			$$(".mu-vol-v").forEach((e) => e.textContent = Math.round(s.volume * 100));
 		}
-		if (p?.id && p.id !== mu.trackId) {
+		if (p?.id && (p.id !== mu.trackId || p.playerType !== mu.trackSource)) {
 			mu.trackId = p.id;
+			mu.trackSource = p.playerType;
 			mu.track = null;
 			mu.extras = {};
-			if (!isBt) api("/api/music/info?id=" + encodeURIComponent(p.id)).then((t) => {
-				if (mu.trackId === p.id) {
+			if (!isBt && !isZvuk) api("/api/music/info?id=" + encodeURIComponent(p.id)).then((t) => {
+				if (mu.trackId === p.id && mu.trackSource === p.playerType) {
 					mu.track = t;
 					renderMusic();
 				}
 			}).catch(() => {});
-			if (!$("#tab-player").hidden) loadPlayerExtras();
 		}
-		if (!$("#tab-player").hidden) renderPlayerTab();
+		if (!$("#tab-player").hidden) {
+			renderPlayerTab();
+			loadPlayerExtras();
+		}
 	}
 	setInterval(() => muState()?.playing && !mu.seeking && renderMusic(), 250);
 	const PL_TYPES = {
@@ -5939,6 +5942,17 @@ function createDeviceControls(context) {
 		const s = muState(), p = muPlayer(), t = mu.track;
 		const src = mu.extras.queue?.title || (p?.playlistId === "user:onyourwave" ? "Моя волна" : p?.playlistDescription);
 		const isBt = p?.playerType === "bluetooth";
+		const tabs = $("#pl-list-tabs");
+		tabs.dataset.albumId = t?.album?.id || "";
+		const playable = p?.playlistId && [
+			"Album",
+			"Playlist",
+			"Artist"
+		].includes(p.playlistType) && ymSourcePath(p);
+		const queueId = playable && p.playlistType === "Playlist" && !String(p.playlistId).includes(":") ? p.playlistPuid + ":" + p.playlistId : p?.playlistId;
+		tabs.dataset.queueId = playable ? queueId : "";
+		tabs.dataset.queueType = playable ? p.playlistType.toLowerCase() : "";
+		$("#pl-queue-play").hidden = !playable;
 		const srcPath = !isBt && muHas() ? ymSourcePath(p) : null;
 		setHtml($("#pl-source"), isBt ? "Bluetooth · звук с телефона или компьютера" : muHas() ? esc(PL_TYPES[p.playlistType] || p.playlistType || "") + (src ? " · " + (srcPath ? ymA(srcPath, src) : esc(src)) : "") : "Ничего не играет");
 		$("#pl-kind").textContent = p ? (isBt ? "Bluetooth" : PL_TYPES[p.type] || p.type || "Трек") + (s?.playing ? " · играет" : " · пауза") : "—";
@@ -5985,22 +5999,26 @@ function createDeviceControls(context) {
 	].forEach((ev) => $("#pl-lyrics").addEventListener(ev, () => {
 		$("#pl-lyrics")._userScroll = Date.now();
 	}, { passive: true }));
-	const trackRow = (t, cur, tag) => `<button class="trow${cur ? " cur" : ""}" data-play="${esc(t.id)}" ${t.available === false ? "disabled" : ""}>
+	const trackRow = (t, cur, tag) => `<div class="trow${cur ? " cur" : ""}">
   ${t.cover ? `<img src="${esc(t.cover)}" alt="" loading="lazy">` : "<span class=\"ph\"></span>"}
   <span class="tt"><b>${esc(t.title)}</b><span>${esc(t.artists)}</span></span>
-  ${tag ? `<span class="badge${cur ? " ok" : ""}">${tag}</span>` : ""}<span class="td">${t.durationMs ? fmtDur(t.durationMs / 1e3) : ""}</span></button>`;
+  ${tag ? `<span class="badge${cur ? " ok" : ""}">${tag}</span>` : ""}<span class="td">${t.durationMs ? fmtDur(t.durationMs / 1e3) : ""}</span></div>`;
 	async function loadPlayerExtras() {
 		const id = mu.trackId;
-		if (!id || mu.extras.for === id) return;
-		mu.extras = { for: id };
+		if (!id || mu.extras.for === id && mu.extras.source === mu.trackSource) return;
+		const source = mu.trackSource;
+		mu.extras = {
+			for: id,
+			source
+		};
 		$("#pl-lyrics").innerHTML = $("#pl-queue").innerHTML = $("#pl-similar").innerHTML = "<div class=\"empty\">Загрузка…</div>";
-		const p = muPlayer(), isBt = p?.playerType === "bluetooth";
+		const p = muPlayer(), isBt = ["bluetooth", "zvuk"].includes(p?.playerType);
 		const lyUrl = isBt ? "/api/music/lyrics?" + new URLSearchParams({
 			title: p.title || "",
 			artist: p.subtitle || "",
 			album: p.extra?.album || "",
 			duration: p.duration || 0
-		}) : "/api/music/lyrics?id=" + id;
+		}) : "/api/music/lyrics?id=" + encodeURIComponent(id);
 		const none = Promise.reject(/* @__PURE__ */ new Error("—"));
 		none.catch(() => {});
 		const [ly, q, sim] = await Promise.allSettled([
@@ -6008,7 +6026,7 @@ function createDeviceControls(context) {
 			isBt ? none : api("/api/music/queue"),
 			isBt ? none : api("/api/music/similar?id=" + id)
 		]);
-		if (mu.trackId !== id) return;
+		if (mu.trackId !== id || mu.trackSource !== source) return;
 		const L = ly.status === "fulfilled" ? ly.value : {};
 		if (L.text) {
 			mu.extras.lyrics = L;
@@ -6045,7 +6063,7 @@ function createDeviceControls(context) {
 		}
 		try {
 			const a = await api("/api/music/artist?id=" + aid);
-			if (mu.trackId !== id) return;
+			if (mu.trackId !== id || mu.trackSource !== source) return;
 			$("#pl-artist").innerHTML = `<div class="artist-grid">
       ${a.cover ? `<img src="${esc(a.cover)}" alt="">` : "<span></span>"}
       <div class="col" style="gap:8px">
@@ -6073,6 +6091,7 @@ function createDeviceControls(context) {
 			return muCmd(btn, { command: "play" });
 		}
 		if (a === "prev" || a === "next") return muCmd(btn, { command: a });
+		if (p?.playerType === "zvuk") return;
 		if (a === "shuffle") return muCmd(btn, {
 			command: "shuffle",
 			enable: !p?.entityInfo?.shuffled
@@ -6124,11 +6143,6 @@ function createDeviceControls(context) {
 	listen(document, "click", (e) => {
 		const b = e.target.closest("[data-mu]");
 		if (b) return musicAction(b.dataset.mu, b);
-		const r = e.target.closest("[data-play]");
-		if (r) act(r, () => api("/api/music/play", {
-			id: r.dataset.play,
-			type: "track"
-		}), "Включаю");
 	});
 	listen(document, "input", (e) => {
 		if (e.target.matches("input.mu-seek")) {
@@ -6567,7 +6581,8 @@ function createDeviceControls(context) {
 	const LAYOUT_KEY = "ov.layout", ZONES = [
 		"wz-top",
 		"wz-left",
-		"wz-right"
+		"wz-right",
+		"wz-extra"
 	];
 	const widgetEls = () => $$("[data-widget]");
 	function readLayout() {
@@ -6591,7 +6606,8 @@ function createDeviceControls(context) {
 				"clock",
 				"light",
 				"device"
-			]
+			],
+			"wz-extra": []
 		},
 		hidden: []
 	};
@@ -6633,8 +6649,10 @@ function createDeviceControls(context) {
 		} else if (how === "down") {
 			const s = sib("nextElementSibling");
 			if (s) s.after(w);
-		} else if (how === "side") $(zone.id === "wz-left" ? "#wz-right" : "#wz-left").append(w);
-		else if (how === "hide") $("#wz-hidden").append(w);
+		} else if (how === "side") {
+			const columns = ZONES.slice(1);
+			$("#" + columns[(columns.indexOf(zone.id) + 1) % columns.length]).append(w);
+		} else if (how === "hide") $("#wz-hidden").append(w);
 		saveLayout();
 	}
 	function widgetBar(w) {
@@ -6715,7 +6733,9 @@ function createDeviceControls(context) {
 		if (saved) applyLayout(saved);
 	} catch {}
 	function applyUI() {
-		const root = document.documentElement, theme = store.get("ui.theme") || "auto", accent = store.get("ui.accent") || "";
+		const root = document.documentElement, theme = store.get("ui.theme") || "auto";
+		const saved = store.get("ui.accent") || "";
+		const accent = /^#[a-f0-9]{6}$/i.test(saved) ? saved : "";
 		if (theme === "auto") delete root.dataset.theme;
 		else root.dataset.theme = theme;
 		for (const [k, v] of [
@@ -6726,6 +6746,7 @@ function createDeviceControls(context) {
 		window.__vizOff = store.get("ui.viz") === "0";
 		$$("#set-theme button").forEach((b) => b.classList.toggle("active", b.dataset.v === theme));
 		$$("#set-accent .sw").forEach((b) => b.classList.toggle("sel", b.dataset.v === accent));
+		$("#set-custom-accent").value = accent || "#6c47ff";
 		$("#set-viz").checked = !window.__vizOff;
 		window.__vizIdleOff = store.get("ui.vizIdle") === "0";
 		$("#set-viz-idle").checked = !window.__vizIdleOff;
@@ -6740,6 +6761,10 @@ function createDeviceControls(context) {
 	}
 	$$("#set-theme button").forEach((b) => b.onclick = () => {
 		store.set("ui.theme", b.dataset.v);
+		applyUI();
+	});
+	listen($("#set-custom-accent"), "input", (e) => {
+		store.set("ui.accent", e.target.value.toUpperCase());
 		applyUI();
 	});
 	$$("#set-accent .sw").forEach((b) => b.onclick = () => {
@@ -7950,38 +7975,43 @@ var _plugin_vue_export_helper_default = (sfc, props) => {
 	return target;
 };
 // src/components/IconSprite.vue
-var _sfc_main$10 = {};
-var _hoisted_1$19 = {
+var _sfc_main$9 = {};
+var _hoisted_1$22 = {
 	width: "0",
 	height: "0",
 	style: { "position": "absolute" },
 	"aria-hidden": "true"
 };
-function _sfc_render$10(_ctx, _cache) {
-	return openBlock(), createElementBlock("svg", _hoisted_1$19, [..._cache[0] || (_cache[0] = [createStaticVNode("<defs><symbol id=\"i-grid\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"></rect></g></symbol><symbol id=\"i-folder\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\" d=\"M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"></path></symbol><symbol id=\"i-file\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z\"></path><path d=\"M14 3v6h6\"></path></g></symbol><symbol id=\"i-log\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z\"></path><path d=\"M14 3v6h6M8 13h8M8 17h5\"></path></g></symbol><symbol id=\"i-term\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 17l6-5-6-5M12 19h8\"></path></symbol><symbol id=\"i-music\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 18V5l12-2v13\"></path><circle cx=\"6\" cy=\"18\" r=\"3\"></circle><circle cx=\"18\" cy=\"16\" r=\"3\"></circle></g></symbol><symbol id=\"i-link\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7\"></path><path d=\"M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7\"></path></g></symbol><symbol id=\"i-play\" viewBox=\"0 0 24 24\"><path fill=\"currentColor\" d=\"M7 4.5v15l13-7.5z\"></path></symbol><symbol id=\"i-stop\" viewBox=\"0 0 24 24\"><rect fill=\"currentColor\" x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"2\"></rect></symbol><symbol id=\"i-refresh\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 12a9 9 0 1 1-3-6.7L21 8\"></path><path d=\"M21 3v5h-5\"></path></g></symbol><symbol id=\"i-power\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M12 2v10\"></path><path d=\"M18.4 6.6a9 9 0 1 1-12.8 0\"></path></g></symbol><symbol id=\"i-search\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"M20 20l-3.5-3.5\"></path></g></symbol><symbol id=\"i-bt\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 7l10 10-5 5V2l5 5L7 17\"></path></symbol><symbol id=\"i-up\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 19V5M5 12l7-7 7 7\"></path></symbol><symbol id=\"i-dl\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 4v11M7 10l5 5 5-5M5 20h14\"></path></symbol><symbol id=\"i-ul\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 16V5M7 10l5-5 5 5M5 20h14\"></path></symbol><symbol id=\"i-edit\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4\"></path></symbol><symbol id=\"i-trash\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3\"></path></symbol><symbol id=\"i-box\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 8l-9-5-9 5 9 5 9-5z\"></path><path d=\"M3 8v8l9 5 9-5V8M12 13v8\"></path></g></symbol><symbol id=\"i-pause\" viewBox=\"0 0 24 24\"><g fill=\"currentColor\"><rect x=\"6\" y=\"5\" width=\"4\" height=\"14\" rx=\"1\"></rect><rect x=\"14\" y=\"5\" width=\"4\" height=\"14\" rx=\"1\"></rect></g></symbol><symbol id=\"i-prev\" viewBox=\"0 0 24 24\"><g fill=\"currentColor\"><path d=\"M18 5.5v13L9 12z\"></path><rect x=\"5\" y=\"5\" width=\"2.5\" height=\"14\" rx=\"1\"></rect></g></symbol><symbol id=\"i-next\" viewBox=\"0 0 24 24\"><g fill=\"currentColor\"><path d=\"M6 5.5v13l9-6.5z\"></path><rect x=\"16.5\" y=\"5\" width=\"2.5\" height=\"14\" rx=\"1\"></rect></g></symbol><symbol id=\"i-shuffle\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M16 4h4v4M4 20L20 4M20 16v4h-4M15 15l5 5M4 4l5 5\"></path></symbol><symbol id=\"i-repeat\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 2l3 3-3 3M3 11V9a4 4 0 0 1 4-4h13M7 22l-3-3 3-3M21 13v2a4 4 0 0 1-4 4H4\"></path></symbol><symbol id=\"i-like\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\" d=\"M12 20s-7-4.4-9-9.2C1.7 7.6 3.8 4.5 7 4.5c2 0 3.3 1.1 5 3 1.7-1.9 3-3 5-3 3.2 0 5.3 3.1 4 6.3C19 15.6 12 20 12 20z\"></path></symbol><symbol id=\"i-dislike\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"></circle><path d=\"M5.6 5.6l12.8 12.8\"></path></g></symbol><symbol id=\"i-vol\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 9v6h4l5 4V5L8 9z\"></path><path d=\"M16.5 8.5a5 5 0 0 1 0 7\"></path></g></symbol><symbol id=\"i-expand\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7\"></path></symbol><symbol id=\"i-gear\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"3\"></circle><path d=\"M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z\"></path></g></symbol><symbol id=\"i-palette\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.9 1.4-1.9l-.3-.9c-.4-1.2.5-2.2 1.7-2.2H17a4 4 0 0 0 4-4c0-5-4-9-9-9z\"></path><circle cx=\"7.5\" cy=\"11\" r=\"1\"></circle><circle cx=\"10\" cy=\"7\" r=\"1\"></circle><circle cx=\"15\" cy=\"7.5\" r=\"1\"></circle></g></symbol><symbol id=\"i-chart\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 4v16h16M7 15l4-5 3 3 5-6\"></path></symbol><symbol id=\"i-alarm\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"13\" r=\"8\"></circle><path d=\"M12 9v4l2.5 2M5 3 2 6M19 3l3 3\"></path></g></symbol><symbol id=\"i-lock\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"10\" width=\"16\" height=\"11\" rx=\"2\"></rect><path d=\"M8 10V7a4 4 0 0 1 8 0v3\"></path></g></symbol><symbol id=\"i-plus\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" d=\"M12 5v14M5 12h14\"></path></symbol><symbol id=\"i-home\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9\"></path></g></symbol><symbol id=\"i-update\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5M4 16a8 8 0 0 0 14 3l3-3m0 5v-5h-5\"></path></g></symbol><symbol id=\"i-chat\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7A8.4 8.4 0 0 1 4 11.5a8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8zM8 11h.01M12 11h.01M16 11h.01\"></path></g></symbol><symbol id=\"i-archive\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 3h18v5H3zM5 8v13h14V8M10 12h4\"></path></g></symbol><symbol id=\"i-shield\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3 3 7v6c0 5 9 9 9 9s9-4 9-9V7zM8 12l3 3 5-6\"></path></g></symbol><symbol id=\"i-check\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12l4 4L19 6\"></path></g></symbol><symbol id=\"i-close\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 6l12 12M6 18 18 6\"></path></g></symbol><symbol id=\"i-info\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"></circle><path d=\"M12 11v6M12 7h.01\"></path></g></symbol><symbol id=\"i-layers\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m3 7 9-5 9 5-9 5zM3 12l9 5 9-5M3 17l9 5 9-5\"></path></g></symbol><symbol id=\"i-undo\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 10h11a6 6 0 0 1 0 12M3 10l6-6M3 10l6 6\"></path></g></symbol><symbol id=\"i-arrow-right\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14M13 6l6 6-6 6\"></path></g></symbol><symbol id=\"i-server\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 3h16v7H4zM4 14h16v7H4zM8 6.5h.01M8 17.5h.01\"></path></g></symbol></defs>", 1)])]);
+function _sfc_render$9(_ctx, _cache) {
+	return openBlock(), createElementBlock("svg", _hoisted_1$22, [..._cache[0] || (_cache[0] = [createStaticVNode("<defs><symbol id=\"i-grid\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"></rect></g></symbol><symbol id=\"i-folder\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\" d=\"M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"></path></symbol><symbol id=\"i-file\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z\"></path><path d=\"M14 3v6h6\"></path></g></symbol><symbol id=\"i-log\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z\"></path><path d=\"M14 3v6h6M8 13h8M8 17h5\"></path></g></symbol><symbol id=\"i-term\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 17l6-5-6-5M12 19h8\"></path></symbol><symbol id=\"i-music\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 18V5l12-2v13\"></path><circle cx=\"6\" cy=\"18\" r=\"3\"></circle><circle cx=\"18\" cy=\"16\" r=\"3\"></circle></g></symbol><symbol id=\"i-link\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7\"></path><path d=\"M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7\"></path></g></symbol><symbol id=\"i-play\" viewBox=\"0 0 24 24\"><path fill=\"currentColor\" d=\"M7 4.5v15l13-7.5z\"></path></symbol><symbol id=\"i-stop\" viewBox=\"0 0 24 24\"><rect fill=\"currentColor\" x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"2\"></rect></symbol><symbol id=\"i-refresh\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 12a9 9 0 1 1-3-6.7L21 8\"></path><path d=\"M21 3v5h-5\"></path></g></symbol><symbol id=\"i-power\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M12 2v10\"></path><path d=\"M18.4 6.6a9 9 0 1 1-12.8 0\"></path></g></symbol><symbol id=\"i-search\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"M20 20l-3.5-3.5\"></path></g></symbol><symbol id=\"i-bt\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 7l10 10-5 5V2l5 5L7 17\"></path></symbol><symbol id=\"i-up\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 19V5M5 12l7-7 7 7\"></path></symbol><symbol id=\"i-dl\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 4v11M7 10l5 5 5-5M5 20h14\"></path></symbol><symbol id=\"i-ul\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 16V5M7 10l5-5 5 5M5 20h14\"></path></symbol><symbol id=\"i-edit\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4\"></path></symbol><symbol id=\"i-trash\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3\"></path></symbol><symbol id=\"i-box\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 8l-9-5-9 5 9 5 9-5z\"></path><path d=\"M3 8v8l9 5 9-5V8M12 13v8\"></path></g></symbol><symbol id=\"i-pause\" viewBox=\"0 0 24 24\"><g fill=\"currentColor\"><rect x=\"6\" y=\"5\" width=\"4\" height=\"14\" rx=\"1\"></rect><rect x=\"14\" y=\"5\" width=\"4\" height=\"14\" rx=\"1\"></rect></g></symbol><symbol id=\"i-prev\" viewBox=\"0 0 24 24\"><g fill=\"currentColor\"><path d=\"M18 5.5v13L9 12z\"></path><rect x=\"5\" y=\"5\" width=\"2.5\" height=\"14\" rx=\"1\"></rect></g></symbol><symbol id=\"i-next\" viewBox=\"0 0 24 24\"><g fill=\"currentColor\"><path d=\"M6 5.5v13l9-6.5z\"></path><rect x=\"16.5\" y=\"5\" width=\"2.5\" height=\"14\" rx=\"1\"></rect></g></symbol><symbol id=\"i-shuffle\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M16 4h4v4M4 20L20 4M20 16v4h-4M15 15l5 5M4 4l5 5\"></path></symbol><symbol id=\"i-repeat\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 2l3 3-3 3M3 11V9a4 4 0 0 1 4-4h13M7 22l-3-3 3-3M21 13v2a4 4 0 0 1-4 4H4\"></path></symbol><symbol id=\"i-like\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\" d=\"M12 20s-7-4.4-9-9.2C1.7 7.6 3.8 4.5 7 4.5c2 0 3.3 1.1 5 3 1.7-1.9 3-3 5-3 3.2 0 5.3 3.1 4 6.3C19 15.6 12 20 12 20z\"></path></symbol><symbol id=\"i-dislike\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"></circle><path d=\"M5.6 5.6l12.8 12.8\"></path></g></symbol><symbol id=\"i-vol\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 9v6h4l5 4V5L8 9z\"></path><path d=\"M16.5 8.5a5 5 0 0 1 0 7\"></path></g></symbol><symbol id=\"i-expand\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7\"></path></symbol><symbol id=\"i-gear\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"3\"></circle><path d=\"M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z\"></path></g></symbol><symbol id=\"i-palette\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.9 1.4-1.9l-.3-.9c-.4-1.2.5-2.2 1.7-2.2H17a4 4 0 0 0 4-4c0-5-4-9-9-9z\"></path><circle cx=\"7.5\" cy=\"11\" r=\"1\"></circle><circle cx=\"10\" cy=\"7\" r=\"1\"></circle><circle cx=\"15\" cy=\"7.5\" r=\"1\"></circle></g></symbol><symbol id=\"i-chart\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 4v16h16M7 15l4-5 3 3 5-6\"></path></symbol><symbol id=\"i-alarm\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"13\" r=\"8\"></circle><path d=\"M12 9v4l2.5 2M5 3 2 6M19 3l3 3\"></path></g></symbol><symbol id=\"i-lock\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"10\" width=\"16\" height=\"11\" rx=\"2\"></rect><path d=\"M8 10V7a4 4 0 0 1 8 0v3\"></path></g></symbol><symbol id=\"i-plus\" viewBox=\"0 0 24 24\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" d=\"M12 5v14M5 12h14\"></path></symbol><symbol id=\"i-home\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9\"></path></g></symbol><symbol id=\"i-update\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 8a8 8 0 0 0-14-3L3 8m0-5v5h5M4 16a8 8 0 0 0 14 3l3-3m0 5v-5h-5\"></path></g></symbol><symbol id=\"i-chat\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7A8.4 8.4 0 0 1 4 11.5a8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8zM8 11h.01M12 11h.01M16 11h.01\"></path></g></symbol><symbol id=\"i-archive\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 3h18v5H3zM5 8v13h14V8M10 12h4\"></path></g></symbol><symbol id=\"i-shield\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3 3 7v6c0 5 9 9 9 9s9-4 9-9V7zM8 12l3 3 5-6\"></path></g></symbol><symbol id=\"i-check\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12l4 4L19 6\"></path></g></symbol><symbol id=\"i-close\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 6l12 12M6 18 18 6\"></path></g></symbol><symbol id=\"i-info\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"></circle><path d=\"M12 11v6M12 7h.01\"></path></g></symbol><symbol id=\"i-layers\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m3 7 9-5 9 5-9 5zM3 12l9 5 9-5M3 17l9 5 9-5\"></path></g></symbol><symbol id=\"i-undo\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M3 10h11a6 6 0 0 1 0 12M3 10l6-6M3 10l6 6\"></path></g></symbol><symbol id=\"i-arrow-right\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14M13 6l6 6-6 6\"></path></g></symbol><symbol id=\"i-server\" viewBox=\"0 0 24 24\"><g fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 3h16v7H4zM4 14h16v7H4zM8 6.5h.01M8 17.5h.01\"></path></g></symbol></defs>", 1)])]);
 }
-var IconSprite_default = /*#__PURE__*/ _plugin_vue_export_helper_default(_sfc_main$10, [["render", _sfc_render$10]]);
+var IconSprite_default = /*#__PURE__*/ _plugin_vue_export_helper_default(_sfc_main$9, [["render", _sfc_render$9]]);
 // src/components/Sidebar.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$18 = { class: "sidebar" };
-var _hoisted_2$17 = {
+var _hoisted_1$21 = ["aria-expanded", "aria-label"];
+var _hoisted_2$20 = {
 	class: "mobile-nav",
 	"aria-label": "Быстрая навигация"
 };
-var _hoisted_3$14 = ["href", "aria-current"];
-var _hoisted_4$13 = ["aria-expanded"];
-var _hoisted_5$12 = { class: "conn" };
-var _hoisted_6$12 = { id: "sidebar-text" };
+var _hoisted_3$17 = ["href", "aria-current"];
+var _hoisted_4$16 = ["aria-expanded"];
+var _hoisted_5$15 = { class: "conn" };
+var _hoisted_6$15 = { id: "sidebar-text" };
 // src/components/Sidebar.vue
 var Sidebar_default = /* @__PURE__ */ defineComponent({
 	__name: "Sidebar",
 	setup(__props) {
 		const more = /* @__PURE__ */ ref(false);
+		const collapsed = /* @__PURE__ */ ref(localStorage.getItem("ui.sidebar-collapsed") === "1");
+		function toggleSidebar() {
+			collapsed.value = !collapsed.value;
+			localStorage.setItem("ui.sidebar-collapsed", collapsed.value ? "1" : "0");
+		}
 		watch(() => route.active, () => {
 			more.value = false;
 		});
 		return (_ctx, _cache) => {
-			return openBlock(), createElementBlock("aside", _hoisted_1$18, [
-				_cache[27] || (_cache[27] = createBaseVNode("a", {
+			return openBlock(), createElementBlock("aside", { class: normalizeClass(["sidebar", { "is-collapsed": collapsed.value }]) }, [
+				_cache[28] || (_cache[28] = createBaseVNode("a", {
 					class: "brand",
 					href: "#home",
 					title: "На «Обзор»"
@@ -7993,6 +8023,18 @@ var Sidebar_default = /* @__PURE__ */ defineComponent({
 					"fill-rule": "evenodd",
 					d: "M0-46a46 46 0 1 1 0 92a46 46 0 1 1 0-92ZM0-25c3.5 0 5.6 2 7.6 5.5l13 22.5c2 3.5 2 6.4.3 9.3c-1.8 3-4.4 4.2-8.4 4.2h-25c-4 0-6.6-1.2-8.4-4.2c-1.7-2.9-1.7-5.8.3-9.3l13-22.5C-5.6-23-3.5-25 0-25Z"
 				})]), createBaseVNode("div", null, [createBaseVNode("b", { id: "model-name" }, "Станция Лайт 2"), createBaseVNode("small", null, "DARKLS Alice Panel")])], -1)),
+				createBaseVNode("button", {
+					type: "button",
+					class: "btn sm sidebar-toggle",
+					"aria-controls": "side-sections",
+					"aria-expanded": !collapsed.value,
+					"aria-label": collapsed.value ? "Развернуть меню" : "Свернуть меню",
+					onClick: toggleSidebar
+				}, [..._cache[4] || (_cache[4] = [createBaseVNode("svg", {
+					width: "18",
+					height: "18",
+					"aria-hidden": "true"
+				}, [createBaseVNode("use", { href: "#i-layers" })], -1), createBaseVNode("span", null, "Свернуть меню", -1)])], 8, _hoisted_1$21),
 				createBaseVNode("nav", {
 					id: "side-sections",
 					class: normalizeClass(["side", { "mobile-open": more.value }]),
@@ -8003,201 +8045,219 @@ var Sidebar_default = /* @__PURE__ */ defineComponent({
 					createBaseVNode("a", {
 						href: "#home",
 						"data-tab": "home",
+						title: "Главная",
 						"data-view": "home",
 						class: normalizeClass({ active: unref(route).active === "home" })
-					}, [..._cache[4] || (_cache[4] = [createBaseVNode("svg", {
-						width: "20",
-						height: "20",
-						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-home" })], -1), createTextVNode("Главная", -1)])], 2),
-					createBaseVNode("a", {
-						href: "#overview",
-						"data-tab": "overview",
-						"data-view": "overview",
-						class: normalizeClass({ active: unref(route).active === "overview" })
 					}, [..._cache[5] || (_cache[5] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-grid" })], -1), createTextVNode("Обзор", -1)])], 2),
+					}, [createBaseVNode("use", { href: "#i-home" })], -1), createBaseVNode("span", null, "Главная", -1)])], 2),
 					createBaseVNode("a", {
-						href: "#player",
-						"data-tab": "player",
-						"data-view": "player",
-						class: normalizeClass({ active: unref(route).active === "player" })
+						href: "#overview",
+						"data-tab": "overview",
+						title: "Обзор",
+						"data-view": "overview",
+						class: normalizeClass({ active: unref(route).active === "overview" })
 					}, [..._cache[6] || (_cache[6] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-music" })], -1), createTextVNode("Плеер", -1)])], 2),
-					_cache[22] || (_cache[22] = createBaseVNode("div", {
+					}, [createBaseVNode("use", { href: "#i-grid" })], -1), createBaseVNode("span", null, "Обзор", -1)])], 2),
+					createBaseVNode("a", {
+						href: "#player",
+						"data-tab": "player",
+						title: "Плеер",
+						"data-view": "player",
+						class: normalizeClass({ active: unref(route).active === "player" })
+					}, [..._cache[7] || (_cache[7] = [createBaseVNode("svg", {
+						width: "20",
+						height: "20",
+						"aria-hidden": "true"
+					}, [createBaseVNode("use", { href: "#i-music" })], -1), createBaseVNode("span", null, "Плеер", -1)])], 2),
+					_cache[23] || (_cache[23] = createBaseVNode("div", {
 						class: "nav-group",
 						role: "presentation"
 					}, "Колонка", -1)),
 					createBaseVNode("a", {
 						href: "#scenes",
 						"data-tab": "scenes",
+						title: "Сценарии",
 						"data-view": "scenes",
 						class: normalizeClass({ active: unref(route).active === "scenes" })
-					}, [..._cache[7] || (_cache[7] = [createBaseVNode("svg", {
-						width: "20",
-						height: "20",
-						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-layers" })], -1), createTextVNode("Сценарии", -1)])], 2),
-					createBaseVNode("a", {
-						href: "#wakeword",
-						"data-tab": "wakeword",
-						"data-view": "wakeword",
-						class: normalizeClass({ active: unref(route).active === "wakeword" })
 					}, [..._cache[8] || (_cache[8] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-chat" })], -1), createTextVNode("Активация", -1)])], 2),
+					}, [createBaseVNode("use", { href: "#i-layers" })], -1), createBaseVNode("span", null, "Сценарии", -1)])], 2),
 					createBaseVNode("a", {
-						href: "#alarm",
-						"data-tab": "alarm",
-						"data-view": "alarm",
-						class: normalizeClass({ active: unref(route).active === "alarm" })
+						href: "#wakeword",
+						"data-tab": "wakeword",
+						title: "Активация",
+						"data-view": "wakeword",
+						class: normalizeClass({ active: unref(route).active === "wakeword" })
 					}, [..._cache[9] || (_cache[9] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-alarm" })], -1), createTextVNode("Будильник", -1)])], 2),
+					}, [createBaseVNode("use", { href: "#i-chat" })], -1), createBaseVNode("span", null, "Активация", -1)])], 2),
 					createBaseVNode("a", {
-						href: "#boot",
-						"data-tab": "boot",
-						"data-view": "boot",
-						class: normalizeClass({ active: unref(route).active === "boot" })
+						href: "#alarm",
+						"data-tab": "alarm",
+						title: "Будильник",
+						"data-view": "alarm",
+						class: normalizeClass({ active: unref(route).active === "alarm" })
 					}, [..._cache[10] || (_cache[10] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-power" })], -1), createTextVNode("Запуск", -1)])], 2),
+					}, [createBaseVNode("use", { href: "#i-alarm" })], -1), createBaseVNode("span", null, "Будильник", -1)])], 2),
 					createBaseVNode("a", {
-						href: "#apps",
-						"data-tab": "apps",
-						"data-view": "apps",
-						class: normalizeClass({ active: unref(route).active === "apps" })
+						href: "#boot",
+						"data-tab": "boot",
+						title: "Запуск",
+						"data-view": "boot",
+						class: normalizeClass({ active: unref(route).active === "boot" })
 					}, [..._cache[11] || (_cache[11] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-box" })], -1), createTextVNode("Приложения", -1)])], 2),
+					}, [createBaseVNode("use", { href: "#i-power" })], -1), createBaseVNode("span", null, "Запуск", -1)])], 2),
 					createBaseVNode("a", {
-						href: "#yam",
-						"data-tab": "yam",
-						"data-view": "yam",
-						class: normalizeClass({ active: unref(route).active === "yam" })
+						href: "#apps",
+						"data-tab": "apps",
+						title: "Приложения",
+						"data-view": "apps",
+						class: normalizeClass({ active: unref(route).active === "apps" })
 					}, [..._cache[12] || (_cache[12] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-layers" })], -1), createTextVNode("YAM v2", -1)])], 2),
+					}, [createBaseVNode("use", { href: "#i-box" })], -1), createBaseVNode("span", null, "Приложения", -1)])], 2),
 					createBaseVNode("a", {
-						href: "#files",
-						"data-tab": "files",
-						"data-view": "files",
-						class: normalizeClass({ active: unref(route).active === "files" })
+						href: "#yam",
+						"data-tab": "yam",
+						title: "YAM v2",
+						"data-view": "yam",
+						class: normalizeClass({ active: unref(route).active === "yam" })
 					}, [..._cache[13] || (_cache[13] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-folder" })], -1), createTextVNode("Файлы", -1)])], 2),
+					}, [createBaseVNode("use", { href: "#i-layers" })], -1), createBaseVNode("span", null, "YAM v2", -1)])], 2),
 					createBaseVNode("a", {
-						href: "#console",
-						"data-tab": "console",
-						"data-view": "console",
-						class: normalizeClass({ active: unref(route).active === "console" })
+						href: "#files",
+						"data-tab": "files",
+						title: "Файлы",
+						"data-view": "files",
+						class: normalizeClass({ active: unref(route).active === "files" })
 					}, [..._cache[14] || (_cache[14] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-term" })], -1), createTextVNode("Консоль", -1)])], 2),
-					_cache[23] || (_cache[23] = createBaseVNode("div", {
+					}, [createBaseVNode("use", { href: "#i-folder" })], -1), createBaseVNode("span", null, "Файлы", -1)])], 2),
+					createBaseVNode("a", {
+						href: "#console",
+						"data-tab": "console",
+						title: "Консоль",
+						"data-view": "console",
+						class: normalizeClass({ active: unref(route).active === "console" })
+					}, [..._cache[15] || (_cache[15] = [createBaseVNode("svg", {
+						width: "20",
+						height: "20",
+						"aria-hidden": "true"
+					}, [createBaseVNode("use", { href: "#i-term" })], -1), createBaseVNode("span", null, "Консоль", -1)])], 2),
+					_cache[24] || (_cache[24] = createBaseVNode("div", {
 						class: "nav-group",
 						role: "presentation"
 					}, "Состояние", -1)),
 					createBaseVNode("a", {
 						href: "#charts",
 						"data-tab": "charts",
+						title: "Графики",
 						"data-view": "charts",
 						class: normalizeClass({ active: unref(route).active === "charts" })
-					}, [..._cache[15] || (_cache[15] = [createBaseVNode("svg", {
-						width: "20",
-						height: "20",
-						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-chart" })], -1), createTextVNode("Графики", -1)])], 2),
-					createBaseVNode("a", {
-						href: "#logs",
-						"data-tab": "logs",
-						"data-view": "logs",
-						class: normalizeClass({ active: unref(route).active === "logs" })
 					}, [..._cache[16] || (_cache[16] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-log" })], -1), createTextVNode("Логи", -1)])], 2),
-					_cache[24] || (_cache[24] = createBaseVNode("div", {
+					}, [createBaseVNode("use", { href: "#i-chart" })], -1), createBaseVNode("span", null, "Графики", -1)])], 2),
+					createBaseVNode("a", {
+						href: "#logs",
+						"data-tab": "logs",
+						title: "Логи",
+						"data-view": "logs",
+						class: normalizeClass({ active: unref(route).active === "logs" })
+					}, [..._cache[17] || (_cache[17] = [createBaseVNode("svg", {
+						width: "20",
+						height: "20",
+						"aria-hidden": "true"
+					}, [createBaseVNode("use", { href: "#i-log" })], -1), createBaseVNode("span", null, "Логи", -1)])], 2),
+					_cache[25] || (_cache[25] = createBaseVNode("div", {
 						class: "nav-sep",
 						role: "presentation"
 					}, null, -1)),
-					_cache[25] || (_cache[25] = createBaseVNode("div", {
+					_cache[26] || (_cache[26] = createBaseVNode("div", {
 						class: "nav-group",
 						role: "presentation"
 					}, "Обслуживание", -1)),
 					createBaseVNode("a", {
 						href: "#diagnostics",
 						"data-tab": "diagnostics",
+						title: "Диагностика",
 						"data-view": "diagnostics",
 						class: normalizeClass({ active: unref(route).active === "diagnostics" })
-					}, [..._cache[17] || (_cache[17] = [createBaseVNode("svg", {
-						width: "20",
-						height: "20",
-						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-shield" })], -1), createTextVNode("Диагностика", -1)])], 2),
-					createBaseVNode("a", {
-						href: "#updates",
-						"data-tab": "updates",
-						"data-view": "updates",
-						class: normalizeClass({ active: unref(route).active === "updates" })
 					}, [..._cache[18] || (_cache[18] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-update" })], -1), createTextVNode("Обновления панели", -1)])], 2),
+					}, [createBaseVNode("use", { href: "#i-shield" })], -1), createBaseVNode("span", null, "Диагностика", -1)])], 2),
 					createBaseVNode("a", {
-						href: "#chatgpt",
-						"data-tab": "chatgpt",
-						"data-view": "chatgpt",
-						class: normalizeClass({ active: unref(route).active === "chatgpt" })
+						href: "#updates",
+						"data-tab": "updates",
+						title: "Обновления панели",
+						"data-view": "updates",
+						class: normalizeClass({ active: unref(route).active === "updates" })
 					}, [..._cache[19] || (_cache[19] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-chat" })], -1), createTextVNode("ChatGPT", -1)])], 2),
+					}, [createBaseVNode("use", { href: "#i-update" })], -1), createBaseVNode("span", null, "Обновления панели", -1)])], 2),
 					createBaseVNode("a", {
-						href: "#backups",
-						"data-tab": "backups",
-						"data-view": "backups",
-						class: normalizeClass({ active: unref(route).active === "backups" })
+						href: "#chatgpt",
+						"data-tab": "chatgpt",
+						title: "ChatGPT",
+						"data-view": "chatgpt",
+						class: normalizeClass({ active: unref(route).active === "chatgpt" })
 					}, [..._cache[20] || (_cache[20] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-archive" })], -1), createTextVNode("Резервные копии", -1)])], 2),
+					}, [createBaseVNode("use", { href: "#i-chat" })], -1), createBaseVNode("span", null, "ChatGPT", -1)])], 2),
 					createBaseVNode("a", {
-						href: "#settings",
-						"data-tab": "settings",
-						"data-view": "settings",
-						class: normalizeClass({ active: unref(route).active === "settings" })
+						href: "#backups",
+						"data-tab": "backups",
+						title: "Резервные копии",
+						"data-view": "backups",
+						class: normalizeClass({ active: unref(route).active === "backups" })
 					}, [..._cache[21] || (_cache[21] = [createBaseVNode("svg", {
 						width: "20",
 						height: "20",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-gear" })], -1), createTextVNode("Настройки", -1)])], 2)
+					}, [createBaseVNode("use", { href: "#i-archive" })], -1), createBaseVNode("span", null, "Резервные копии", -1)])], 2),
+					createBaseVNode("a", {
+						href: "#settings",
+						"data-tab": "settings",
+						title: "Настройки",
+						"data-view": "settings",
+						class: normalizeClass({ active: unref(route).active === "settings" })
+					}, [..._cache[22] || (_cache[22] = [createBaseVNode("svg", {
+						width: "20",
+						height: "20",
+						"aria-hidden": "true"
+					}, [createBaseVNode("use", { href: "#i-gear" })], -1), createBaseVNode("span", null, "Настройки", -1)])], 2)
 				], 34),
-				createBaseVNode("nav", _hoisted_2$17, [(openBlock(), createElementBlock(Fragment, null, renderList({
+				createBaseVNode("nav", _hoisted_2$20, [(openBlock(), createElementBlock(Fragment, null, renderList({
 					home: "Главная",
 					overview: "Обзор",
 					player: "Плеер"
@@ -8207,14 +8267,14 @@ var Sidebar_default = /* @__PURE__ */ defineComponent({
 						href: "#" + key,
 						"aria-current": unref(route).active === key ? "page" : void 0,
 						onClick: _cache[2] || (_cache[2] = ($event) => more.value = false)
-					}, toDisplayString(label), 9, _hoisted_3$14);
+					}, toDisplayString(label), 9, _hoisted_3$17);
 				}), 64)), createBaseVNode("button", {
 					type: "button",
 					"aria-controls": "side-sections",
 					"aria-expanded": more.value,
 					onClick: _cache[3] || (_cache[3] = ($event) => more.value = !more.value)
-				}, "Ещё", 8, _hoisted_4$13)]),
-				_cache[28] || (_cache[28] = createBaseVNode("div", {
+				}, "Ещё", 8, _hoisted_4$16)]),
+				_cache[29] || (_cache[29] = createBaseVNode("div", {
 					class: "conn",
 					id: "conn-box",
 					hidden: ""
@@ -8222,26 +8282,26 @@ var Sidebar_default = /* @__PURE__ */ defineComponent({
 					class: "dot",
 					id: "conn"
 				}), createBaseVNode("span", { id: "conn-text" }, "Подключение…")]), createBaseVNode("small", { id: "conn-ip" }, "—")], -1)),
-				createBaseVNode("div", _hoisted_5$12, [createBaseVNode("b", null, [createBaseVNode("span", {
+				createBaseVNode("div", _hoisted_5$15, [createBaseVNode("b", null, [createBaseVNode("span", {
 					class: normalizeClass(["status-dot", unref(health).info && !unref(health).error ? "good" : "bad"]),
 					id: "sidebar-status"
-				}, null, 2), createBaseVNode("span", _hoisted_6$12, toDisplayString(unref(health).error ? "Нет связи" : unref(health).info ? "Локальный доступ" : "Проверяем связь"), 1)]), _cache[26] || (_cache[26] = createBaseVNode("small", null, "Локальное управление", -1))]),
-				_cache[29] || (_cache[29] = createBaseVNode("button", {
+				}, null, 2), createBaseVNode("span", _hoisted_6$15, toDisplayString(unref(health).error ? "Нет связи" : unref(health).info ? "Локальный доступ" : "Проверяем связь"), 1)]), _cache[27] || (_cache[27] = createBaseVNode("small", null, "Локальное управление", -1))]),
+				_cache[30] || (_cache[30] = createBaseVNode("button", {
 					id: "menu-button",
 					hidden: "",
 					"aria-label": "Меню"
 				}, null, -1)),
-				_cache[30] || (_cache[30] = createBaseVNode("span", {
+				_cache[31] || (_cache[31] = createBaseVNode("span", {
 					id: "breadcrumb",
 					hidden: ""
 				}, null, -1))
-			]);
+			], 2);
 		};
 	}
 });
 // src/components/DeviceOverlays.vue
-var _sfc_main$9 = {};
-function _sfc_render$9(_ctx, _cache) {
+var _sfc_main$8 = {};
+function _sfc_render$8(_ctx, _cache) {
 	return openBlock(), createElementBlock(Fragment, null, [
 		_cache[0] || (_cache[0] = createStaticVNode("<div class=\"minibar\" id=\"minibar\" hidden><div class=\"mb-track\"><a class=\"mb-cover mu-cover\" href=\"#player\" title=\"Открыть плеер\"><svg width=\"22\" height=\"22\" aria-hidden=\"true\"><use href=\"#i-music\"></use></svg></a><a class=\"mb-text\" href=\"#player\" title=\"Открыть плеер\"><b class=\"mu-title\">—</b><span class=\"mu-artist\"></span></a><button class=\"cbtn\" data-mu=\"like\" aria-label=\"Лайк\"><svg width=\"18\" height=\"18\" aria-hidden=\"true\"><use href=\"#i-like\"></use></svg></button></div><div class=\"mb-center\"><div class=\"controls\" data-mu-controls=\"bar\"></div><div class=\"progress\"><span class=\"mu-pos\">0:00</span><input type=\"range\" class=\"mu-seek\" min=\"0\" max=\"100\" value=\"0\" step=\"1\" aria-label=\"Позиция в треке\"><span class=\"mu-dur\">0:00</span></div></div><div class=\"mb-right\"><svg width=\"18\" height=\"18\" aria-hidden=\"true\"><use href=\"#i-vol\"></use></svg><input type=\"range\" class=\"mu-vol\" min=\"0\" max=\"100\" step=\"5\" aria-label=\"Громкость\"><a class=\"cbtn\" href=\"#player\" aria-label=\"Открыть плеер\"><svg width=\"18\" height=\"18\" aria-hidden=\"true\"><use href=\"#i-expand\"></use></svg></a></div></div>", 1)),
 		_cache[1] || (_cache[1] = createBaseVNode("div", {
@@ -8277,10 +8337,10 @@ function _sfc_render$9(_ctx, _cache) {
 		], -1))
 	], 64);
 }
-var DeviceOverlays_default = /*#__PURE__*/ _plugin_vue_export_helper_default(_sfc_main$9, [["render", _sfc_render$9]]);
+var DeviceOverlays_default = /*#__PURE__*/ _plugin_vue_export_helper_default(_sfc_main$8, [["render", _sfc_render$8]]);
 // src/components/UiIcon.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$17 = ["width", "height"];
-var _hoisted_2$16 = ["href"];
+var _hoisted_1$20 = ["width", "height"];
+var _hoisted_2$19 = ["href"];
 // src/components/UiIcon.vue
 var UiIcon_default = /* @__PURE__ */ defineComponent({
 	__name: "UiIcon",
@@ -8296,16 +8356,16 @@ var UiIcon_default = /* @__PURE__ */ defineComponent({
 				height: __props.size,
 				"aria-hidden": "true",
 				focusable: "false"
-			}, [createBaseVNode("use", { href: "#i-" + __props.name }, null, 8, _hoisted_2$16)], 8, _hoisted_1$17);
+			}, [createBaseVNode("use", { href: "#i-" + __props.name }, null, 8, _hoisted_2$19)], 8, _hoisted_1$20);
 		};
 	}
 });
 // src/components/LoginDialog.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$16 = {
+var _hoisted_1$19 = {
 	id: "login-error",
 	role: "alert"
 };
-var _hoisted_2$15 = ["disabled"];
+var _hoisted_2$18 = ["disabled"];
 // src/components/LoginDialog.vue
 var LoginDialog_default = /* @__PURE__ */ defineComponent({
 	__name: "LoginDialog",
@@ -8352,83 +8412,83 @@ var LoginDialog_default = /* @__PURE__ */ defineComponent({
 					placeholder: "Пароль",
 					required: ""
 				}, null, 512), [[vModelText, password.value]]),
-				createBaseVNode("p", _hoisted_1$16, toDisplayString(error.value), 1),
+				createBaseVNode("p", _hoisted_1$19, toDisplayString(error.value), 1),
 				createBaseVNode("button", {
 					class: "btn primary",
 					type: "submit",
 					disabled: busy.value
-				}, [createVNode(UiIcon_default, { name: "lock" }), _cache[3] || (_cache[3] = createTextVNode("Войти", -1))], 8, _hoisted_2$15)
+				}, [createVNode(UiIcon_default, { name: "lock" }), _cache[3] || (_cache[3] = createTextVNode("Войти", -1))], 8, _hoisted_2$18)
 			], 32)], 544);
 		};
 	}
 });
 // src/pages/HomePage.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$15 = { class: "page-head" };
-var _hoisted_2$14 = {
+var _hoisted_1$18 = { class: "page-head" };
+var _hoisted_2$17 = {
 	class: "sub",
 	id: "station-address"
 };
-var _hoisted_3$13 = { class: "actions" };
-var _hoisted_4$12 = {
+var _hoisted_3$16 = { class: "actions" };
+var _hoisted_4$15 = {
 	class: "badge",
 	id: "hero-status"
 };
-var _hoisted_5$11 = ["hidden"];
-var _hoisted_6$11 = { class: "card" };
-var _hoisted_7$11 = { class: "card-head" };
-var _hoisted_8$11 = {
+var _hoisted_5$14 = ["hidden"];
+var _hoisted_6$14 = { class: "card" };
+var _hoisted_7$13 = { class: "card-head" };
+var _hoisted_8$13 = {
 	class: "badge",
 	id: "y2-home-version"
 };
-var _hoisted_9$11 = {
+var _hoisted_9$13 = {
 	class: "btn primary",
 	href: "#yam"
 };
-var _hoisted_10$10 = { class: "card" };
-var _hoisted_11$10 = { class: "card-head" };
-var _hoisted_12$10 = {
+var _hoisted_10$12 = { class: "card" };
+var _hoisted_11$12 = { class: "card-head" };
+var _hoisted_12$12 = {
 	class: "native-state",
 	id: "adb-state"
 };
-var _hoisted_13$9 = {
+var _hoisted_13$11 = {
 	class: "hint",
 	id: "adb-detail"
 };
-var _hoisted_14$7 = {
+var _hoisted_14$10 = {
 	class: "btn",
 	href: "#console"
 };
-var _hoisted_15$6 = { class: "card" };
-var _hoisted_16$6 = { class: "card-head" };
-var _hoisted_17$6 = {
+var _hoisted_15$9 = { class: "card" };
+var _hoisted_16$9 = { class: "card-head" };
+var _hoisted_17$9 = {
 	class: "meta",
 	id: "hero-platform"
 };
-var _hoisted_18$6 = { class: "row" };
-var _hoisted_19$5 = ["href"];
-var _hoisted_20$4 = { class: "cols" };
-var _hoisted_21$4 = { class: "card" };
-var _hoisted_22$3 = { class: "card-head" };
-var _hoisted_23$3 = {
+var _hoisted_18$9 = { class: "row" };
+var _hoisted_19$7 = ["href"];
+var _hoisted_20$6 = { class: "cols" };
+var _hoisted_21$5 = { class: "card" };
+var _hoisted_22$4 = { class: "card-head" };
+var _hoisted_23$4 = {
 	class: "badge",
 	id: "home-count"
 };
-var _hoisted_24$2 = {
+var _hoisted_24$3 = {
 	class: "btn sm",
 	href: "#apps"
 };
-var _hoisted_25$2 = {
+var _hoisted_25$3 = {
 	id: "home-packages",
 	class: "placeholder"
 };
-var _hoisted_26$2 = { href: "#apps" };
-var _hoisted_27$2 = {
+var _hoisted_26$3 = { href: "#apps" };
+var _hoisted_27$3 = {
 	key: 0,
 	class: "hint"
 };
-var _hoisted_28$2 = { class: "card" };
-var _hoisted_29$2 = { class: "card-head" };
-var _hoisted_30$2 = { id: "sensors" };
+var _hoisted_28$3 = { class: "card" };
+var _hoisted_29$3 = { class: "card-head" };
+var _hoisted_30$3 = { id: "sensors" };
 // src/pages/HomePage.vue
 var HomePage_default = /* @__PURE__ */ defineComponent({
 	__name: "HomePage",
@@ -8447,10 +8507,10 @@ var HomePage_default = /* @__PURE__ */ defineComponent({
 		useEvents(() => void load(), ["darkls:authchanged"]);
 		return (_ctx, _cache) => {
 			return openBlock(), createElementBlock(Fragment, null, [
-				createBaseVNode("header", _hoisted_1$15, [createBaseVNode("div", null, [createBaseVNode("h1", null, [createVNode(UiIcon_default, {
+				createBaseVNode("header", _hoisted_1$18, [createBaseVNode("div", null, [createBaseVNode("h1", null, [createVNode(UiIcon_default, {
 					name: "home",
 					size: 24
-				}), _cache[0] || (_cache[0] = createTextVNode("Главная", -1))]), createBaseVNode("div", _hoisted_2$14, toDisplayString(unref(health).info ? unref(host) : "Подключение…"), 1)]), createBaseVNode("div", _hoisted_3$13, [createBaseVNode("span", _hoisted_4$12, toDisplayString(unref(health).info ? "● Панель работает на колонке" : "Проверяем связь"), 1), createBaseVNode("button", {
+				}), _cache[0] || (_cache[0] = createTextVNode("Главная", -1))]), createBaseVNode("div", _hoisted_2$17, toDisplayString(unref(health).info ? unref(host) : "Подключение…"), 1)]), createBaseVNode("div", _hoisted_3$16, [createBaseVNode("span", _hoisted_4$15, toDisplayString(unref(health).info ? "● Панель работает на колонке" : "Проверяем связь"), 1), createBaseVNode("button", {
 					class: "btn",
 					"data-refresh": "",
 					onClick: load
@@ -8460,24 +8520,24 @@ var HomePage_default = /* @__PURE__ */ defineComponent({
 					class: "card hint",
 					role: "status",
 					hidden: !unref(health).error
-				}, toDisplayString(unref(health).error), 9, _hoisted_5$11),
-				createBaseVNode("section", _hoisted_6$11, [
-					createBaseVNode("div", _hoisted_7$11, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "box" }), _cache[2] || (_cache[2] = createTextVNode("YAM v2", -1))]), createBaseVNode("span", _hoisted_8$11, toDisplayString(unref(yamVersion)), 1)]),
+				}, toDisplayString(unref(health).error), 9, _hoisted_5$14),
+				createBaseVNode("section", _hoisted_6$14, [
+					createBaseVNode("div", _hoisted_7$13, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "box" }), _cache[2] || (_cache[2] = createTextVNode("YAM v2", -1))]), createBaseVNode("span", _hoisted_8$13, toDisplayString(unref(yamVersion)), 1)]),
 					_cache[4] || (_cache[4] = createBaseVNode("p", { class: "hint" }, "Актуальный менеджер пакетов .yampkg работает прямо на колонке.", -1)),
-					createBaseVNode("a", _hoisted_9$11, [createVNode(UiIcon_default, { name: "layers" }), _cache[3] || (_cache[3] = createTextVNode("Открыть YAM v2", -1))])
+					createBaseVNode("a", _hoisted_9$13, [createVNode(UiIcon_default, { name: "layers" }), _cache[3] || (_cache[3] = createTextVNode("Открыть YAM v2", -1))])
 				]),
-				createBaseVNode("section", _hoisted_10$10, [
-					createBaseVNode("div", _hoisted_11$10, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[5] || (_cache[5] = createTextVNode("Локальный доступ", -1))]), createBaseVNode("span", {
+				createBaseVNode("section", _hoisted_10$12, [
+					createBaseVNode("div", _hoisted_11$12, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[5] || (_cache[5] = createTextVNode("Локальный доступ", -1))]), createBaseVNode("span", {
 						class: normalizeClass(["status-dot", unref(health).info && !unref(health).error ? "good" : "bad"]),
 						id: "adb-dot"
 					}, null, 2)]),
-					createBaseVNode("strong", _hoisted_12$10, toDisplayString(unref(health).info ? "Готов" : "Проверка…"), 1),
-					createBaseVNode("p", _hoisted_13$9, toDisplayString(unref(health).info ? "Панель управляет колонкой локально; ADB и yamd не требуются." : "Панель работает на колонке"), 1),
-					createBaseVNode("a", _hoisted_14$7, [createVNode(UiIcon_default, { name: "term" }), _cache[6] || (_cache[6] = createTextVNode("Консоль", -1))])
+					createBaseVNode("strong", _hoisted_12$12, toDisplayString(unref(health).info ? "Готов" : "Проверка…"), 1),
+					createBaseVNode("p", _hoisted_13$11, toDisplayString(unref(health).info ? "Панель управляет колонкой локально; ADB и yamd не требуются." : "Панель работает на колонке"), 1),
+					createBaseVNode("a", _hoisted_14$10, [createVNode(UiIcon_default, { name: "term" }), _cache[6] || (_cache[6] = createTextVNode("Консоль", -1))])
 				]),
-				createBaseVNode("section", _hoisted_15$6, [
-					createBaseVNode("div", _hoisted_16$6, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[7] || (_cache[7] = createTextVNode("Управление колонкой", -1))]), createBaseVNode("span", _hoisted_17$6, toDisplayString(unref(health).info?.device?.model || "Мини 3 Про") + " · " + toDisplayString(unref(health).info?.device?.platform || "pickle"), 1)]),
-					createBaseVNode("div", _hoisted_18$6, [(openBlock(), createElementBlock(Fragment, null, renderList([
+				createBaseVNode("section", _hoisted_15$9, [
+					createBaseVNode("div", _hoisted_16$9, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[7] || (_cache[7] = createTextVNode("Управление колонкой", -1))]), createBaseVNode("span", _hoisted_17$9, toDisplayString(unref(health).info?.device?.model || "Мини 3 Про") + " · " + toDisplayString(unref(health).info?.device?.platform || "pickle"), 1)]),
+					createBaseVNode("div", _hoisted_18$9, [(openBlock(), createElementBlock(Fragment, null, renderList([
 						[
 							"overview",
 							"grid",
@@ -8508,22 +8568,22 @@ var HomePage_default = /* @__PURE__ */ defineComponent({
 							key: v[0],
 							class: normalizeClass(["btn", { primary: v[0] === "overview" }]),
 							href: "#" + v[0]
-						}, [createVNode(UiIcon_default, { name: v[1] }, null, 8, ["name"]), createTextVNode(toDisplayString(v[2]), 1)], 10, _hoisted_19$5);
+						}, [createVNode(UiIcon_default, { name: v[1] }, null, 8, ["name"]), createTextVNode(toDisplayString(v[2]), 1)], 10, _hoisted_19$7);
 					}), 64))]),
 					_cache[8] || (_cache[8] = createBaseVNode("p", { class: "hint" }, "Все разделы открываются здесь. Управление идёт локально; ПК, ADB и yamd не требуются.", -1))
 				]),
-				createBaseVNode("div", _hoisted_20$4, [createBaseVNode("article", _hoisted_21$4, [createBaseVNode("div", _hoisted_22$3, [createBaseVNode("h2", null, [
+				createBaseVNode("div", _hoisted_20$6, [createBaseVNode("article", _hoisted_21$5, [createBaseVNode("div", _hoisted_22$4, [createBaseVNode("h2", null, [
 					createVNode(UiIcon_default, { name: "box" }),
 					_cache[9] || (_cache[9] = createTextVNode("Пакеты YAM ", -1)),
-					createBaseVNode("span", _hoisted_23$3, toDisplayString(unref(packages).length), 1)
-				]), createBaseVNode("a", _hoisted_24$2, [createVNode(UiIcon_default, { name: "box" }), _cache[10] || (_cache[10] = createTextVNode("Управлять", -1))])]), createBaseVNode("div", _hoisted_25$2, [(openBlock(true), createElementBlock(Fragment, null, renderList(unref(packages).slice(0, 4), (p) => {
+					createBaseVNode("span", _hoisted_23$4, toDisplayString(unref(packages).length), 1)
+				]), createBaseVNode("a", _hoisted_24$3, [createVNode(UiIcon_default, { name: "box" }), _cache[10] || (_cache[10] = createTextVNode("Управлять", -1))])]), createBaseVNode("div", _hoisted_25$3, [(openBlock(true), createElementBlock(Fragment, null, renderList(unref(packages).slice(0, 4), (p) => {
 					return openBlock(), createElementBlock("div", {
 						key: p.name,
 						class: "summary-row"
-					}, [createBaseVNode("a", _hoisted_26$2, toDisplayString(p.name), 1), createBaseVNode("span", null, toDisplayString(p.version) + " · " + toDisplayString(p.services?.filter((s) => s.status === "running").length || 0) + " запущено", 1)]);
-				}), 128)), !unref(packages).length ? (openBlock(), createElementBlock("p", _hoisted_27$2, [..._cache[11] || (_cache[11] = [createTextVNode("Приложений пока нет. ", -1), createBaseVNode("a", { href: "#yam" }, "Установить через YAM", -1)])])) : createCommentVNode("", true)])]), createBaseVNode("article", _hoisted_28$2, [
-					createBaseVNode("div", _hoisted_29$2, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[12] || (_cache[12] = createTextVNode("Датчики", -1))]), _cache[13] || (_cache[13] = createBaseVNode("span", { class: "meta" }, "Данные ядра · sysfs", -1))]),
-					createBaseVNode("div", _hoisted_30$2, [(openBlock(true), createElementBlock(Fragment, null, renderList(sensors.value, (s) => {
+					}, [createBaseVNode("a", _hoisted_26$3, toDisplayString(p.name), 1), createBaseVNode("span", null, toDisplayString(p.version) + " · " + toDisplayString(p.services?.filter((s) => s.status === "running").length || 0) + " запущено", 1)]);
+				}), 128)), !unref(packages).length ? (openBlock(), createElementBlock("p", _hoisted_27$3, [..._cache[11] || (_cache[11] = [createTextVNode("Приложений пока нет. ", -1), createBaseVNode("a", { href: "#yam" }, "Установить через YAM", -1)])])) : createCommentVNode("", true)])]), createBaseVNode("article", _hoisted_28$3, [
+					createBaseVNode("div", _hoisted_29$3, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[12] || (_cache[12] = createTextVNode("Датчики", -1))]), _cache[13] || (_cache[13] = createBaseVNode("span", { class: "meta" }, "Данные ядра · sysfs", -1))]),
+					createBaseVNode("div", _hoisted_30$3, [(openBlock(true), createElementBlock(Fragment, null, renderList(sensors.value, (s) => {
 						return openBlock(), createElementBlock("div", {
 							key: s.id,
 							class: "sensor-row"
@@ -8536,8 +8596,8 @@ var HomePage_default = /* @__PURE__ */ defineComponent({
 	}
 });
 // src/components/CheckRow.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$14 = ["aria-label"];
-var _hoisted_2$13 = { class: "check-copy" };
+var _hoisted_1$17 = ["aria-label"];
+var _hoisted_2$16 = { class: "check-copy" };
 // src/components/CheckRow.vue
 var CheckRow_default = /* @__PURE__ */ defineComponent({
 	__name: "CheckRow",
@@ -8552,75 +8612,75 @@ var CheckRow_default = /* @__PURE__ */ defineComponent({
 				class: "check-mark",
 				role: "img",
 				"aria-label": __props.status === "ok" ? "Успешно" : __props.status === "error" ? "Ошибка" : "Внимание"
-			}, [createVNode(UiIcon_default, { name: __props.status === "ok" ? "check" : __props.status === "error" ? "close" : "info" }, null, 8, ["name"])], 8, _hoisted_1$14), createBaseVNode("div", _hoisted_2$13, [createBaseVNode("b", null, toDisplayString(__props.name), 1), createBaseVNode("span", null, toDisplayString(__props.detail), 1)])], 2);
+			}, [createVNode(UiIcon_default, { name: __props.status === "ok" ? "check" : __props.status === "error" ? "close" : "info" }, null, 8, ["name"])], 8, _hoisted_1$17), createBaseVNode("div", _hoisted_2$16, [createBaseVNode("b", null, toDisplayString(__props.name), 1), createBaseVNode("span", null, toDisplayString(__props.detail), 1)])], 2);
 		};
 	}
 });
 // src/pages/AppsPage.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$13 = { class: "page-head" };
-var _hoisted_2$12 = ["disabled"];
-var _hoisted_3$12 = { class: "card" };
-var _hoisted_4$11 = { class: "card-head" };
-var _hoisted_5$10 = {
+var _hoisted_1$16 = { class: "page-head" };
+var _hoisted_2$15 = ["disabled"];
+var _hoisted_3$15 = { class: "card" };
+var _hoisted_4$14 = { class: "card-head" };
+var _hoisted_5$13 = {
 	class: "badge",
 	id: "apps-boot-badge"
 };
-var _hoisted_6$10 = {
+var _hoisted_6$13 = {
 	class: "hint",
 	id: "apps-boot-info"
 };
-var _hoisted_7$10 = { id: "apps-boot-checks" };
-var _hoisted_8$10 = ["disabled"];
-var _hoisted_9$10 = { class: "card-head" };
-var _hoisted_10$9 = { class: "badge" };
-var _hoisted_11$9 = { class: "app-description" };
-var _hoisted_12$9 = { class: "app-web" };
-var _hoisted_13$8 = ["href"];
-var _hoisted_14$6 = {
+var _hoisted_7$12 = { id: "apps-boot-checks" };
+var _hoisted_8$12 = ["disabled"];
+var _hoisted_9$12 = { class: "card-head" };
+var _hoisted_10$11 = { class: "badge" };
+var _hoisted_11$11 = { class: "app-description" };
+var _hoisted_12$11 = { class: "app-web" };
+var _hoisted_13$10 = ["href"];
+var _hoisted_14$9 = {
 	key: 1,
 	class: "btn",
 	disabled: ""
 };
-var _hoisted_15$5 = { class: "hint" };
-var _hoisted_16$5 = { class: "card-head" };
-var _hoisted_17$5 = { class: "badge" };
-var _hoisted_18$5 = { class: "hint" };
-var _hoisted_19$4 = { class: "row" };
-var _hoisted_20$3 = [
+var _hoisted_15$8 = { class: "hint" };
+var _hoisted_16$8 = { class: "card-head" };
+var _hoisted_17$8 = { class: "badge" };
+var _hoisted_18$8 = { class: "hint" };
+var _hoisted_19$6 = { class: "row" };
+var _hoisted_20$5 = [
 	"data-app-action",
 	"data-service",
 	"disabled",
 	"onClick"
 ];
-var _hoisted_21$3 = ["data-app-log", "onClick"];
-var _hoisted_22$2 = { class: "toggle" };
-var _hoisted_23$2 = [
+var _hoisted_21$4 = ["data-app-log", "onClick"];
+var _hoisted_22$3 = { class: "toggle" };
+var _hoisted_23$3 = [
 	"data-app-auto",
 	"checked",
 	"disabled",
 	"onChange"
 ];
-var _hoisted_24$1 = {
+var _hoisted_24$2 = {
 	key: 0,
 	class: "hint"
 };
-var _hoisted_25$1 = ["onToggle"];
-var _hoisted_26$1 = ["data-app-meta", "onSubmit"];
-var _hoisted_27$1 = ["onUpdate:modelValue"];
-var _hoisted_28$1 = ["onUpdate:modelValue"];
-var _hoisted_29$1 = { class: "row" };
-var _hoisted_30$1 = ["onUpdate:modelValue"];
-var _hoisted_31$1 = ["onUpdate:modelValue"];
-var _hoisted_32$1 = ["disabled"];
-var _hoisted_33$1 = {
+var _hoisted_25$2 = ["onToggle"];
+var _hoisted_26$2 = ["data-app-meta", "onSubmit"];
+var _hoisted_27$2 = ["onUpdate:modelValue"];
+var _hoisted_28$2 = ["onUpdate:modelValue"];
+var _hoisted_29$2 = { class: "row" };
+var _hoisted_30$2 = ["onUpdate:modelValue"];
+var _hoisted_31$2 = ["onUpdate:modelValue"];
+var _hoisted_32$2 = ["disabled"];
+var _hoisted_33$2 = {
 	key: 0,
 	class: "card"
 };
-var _hoisted_34$1 = {
+var _hoisted_34$2 = {
 	class: "btn",
 	href: "#yam"
 };
-var _hoisted_35$1 = { class: "card" };
+var _hoisted_35$2 = { class: "card" };
 var _hoisted_36$1 = { id: "apps-log-title" };
 var _hoisted_37$1 = {
 	class: "out",
@@ -8717,7 +8777,7 @@ var AppsPage_default = /* @__PURE__ */ defineComponent({
 		usePolling(load, 5e3, () => ["apps", "home"].includes(route.active) && !opened.size && !list.value?.contains(document.activeElement));
 		return (_ctx, _cache) => {
 			return openBlock(), createElementBlock(Fragment, null, [
-				createBaseVNode("header", _hoisted_1$13, [createBaseVNode("div", null, [createBaseVNode("h1", null, [createVNode(UiIcon_default, {
+				createBaseVNode("header", _hoisted_1$16, [createBaseVNode("div", null, [createBaseVNode("h1", null, [createVNode(UiIcon_default, {
 					name: "box",
 					size: 24
 				}), _cache[2] || (_cache[2] = createTextVNode("Приложения", -1))]), _cache[3] || (_cache[3] = createBaseVNode("div", { class: "sub" }, "Запуск служб из пакетов YAM · управление на колонке", -1))]), createBaseVNode("button", {
@@ -8725,11 +8785,11 @@ var AppsPage_default = /* @__PURE__ */ defineComponent({
 					id: "apps-refresh",
 					disabled: unref(busy),
 					onClick: _cache[0] || (_cache[0] = ($event) => act({ action: "discover" }))
-				}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[4] || (_cache[4] = createTextVNode("Обновить", -1))], 8, _hoisted_2$12)]),
-				createBaseVNode("section", _hoisted_3$12, [
-					createBaseVNode("div", _hoisted_4$11, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "undo" }), _cache[5] || (_cache[5] = createTextVNode("Восстановление после перезагрузки", -1))]), createBaseVNode("span", _hoisted_5$10, toDisplayString(bootBadge.value), 1)]),
-					createBaseVNode("p", _hoisted_6$10, toDisplayString(report.value.checked ? "Последняя проверка: " + unref(stamp)(report.value.checked) : "Проверка начнётся после запуска хоста.") + toDisplayString(state.value.paused ? " Службы приостановлены на время изменения пакетов." : ""), 1),
-					createBaseVNode("div", _hoisted_7$10, [(openBlock(true), createElementBlock(Fragment, null, renderList(report.value.checks || [], (c) => {
+				}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[4] || (_cache[4] = createTextVNode("Обновить", -1))], 8, _hoisted_2$15)]),
+				createBaseVNode("section", _hoisted_3$15, [
+					createBaseVNode("div", _hoisted_4$14, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "undo" }), _cache[5] || (_cache[5] = createTextVNode("Восстановление после перезагрузки", -1))]), createBaseVNode("span", _hoisted_5$13, toDisplayString(bootBadge.value), 1)]),
+					createBaseVNode("p", _hoisted_6$13, toDisplayString(report.value.checked ? "Последняя проверка: " + unref(stamp)(report.value.checked) : "Проверка начнётся после запуска хоста.") + toDisplayString(state.value.paused ? " Службы приостановлены на время изменения пакетов." : ""), 1),
+					createBaseVNode("div", _hoisted_7$12, [(openBlock(true), createElementBlock(Fragment, null, renderList(report.value.checks || [], (c) => {
 						return openBlock(), createBlock(CheckRow_default, {
 							key: c.name,
 							name: c.name,
@@ -8746,7 +8806,7 @@ var AppsPage_default = /* @__PURE__ */ defineComponent({
 						id: "apps-recheck",
 						disabled: unref(busy),
 						onClick: _cache[1] || (_cache[1] = ($event) => act({ action: "recheck" }))
-					}, [createVNode(UiIcon_default, { name: "shield" }), _cache[6] || (_cache[6] = createTextVNode("Проверить сейчас", -1))], 8, _hoisted_8$10),
+					}, [createVNode(UiIcon_default, { name: "shield" }), _cache[6] || (_cache[6] = createTextVNode("Проверить сейчас", -1))], 8, _hoisted_8$12),
 					_cache[7] || (_cache[7] = createBaseVNode("p", { class: "hint" }, "Проверяются панель, запуск YAM CLI и выбранные службы. Наличие процесса не подтверждает полную работоспособность приложения.", -1))
 				]),
 				_cache[24] || (_cache[24] = createBaseVNode("p", { class: "hint" }, "Автозапуск выключен, пока ты не включишь его для конкретной службы. До 8 служб одновременно. Приложение должно работать на переднем плане. «Остановить» действует до следующей загрузки; отключение автозапуска не останавливает текущий процесс.", -1)),
@@ -8760,23 +8820,23 @@ var AppsPage_default = /* @__PURE__ */ defineComponent({
 						key: p.name,
 						class: "card app-card"
 					}, [
-						createBaseVNode("div", _hoisted_9$10, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "box" }), createTextVNode(toDisplayString(p.name), 1)]), createBaseVNode("span", _hoisted_10$9, toDisplayString(p.version), 1)]),
-						createBaseVNode("p", _hoisted_11$9, toDisplayString(p.description || ""), 1),
-						createBaseVNode("div", _hoisted_12$9, [p.web ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [p.web.ready ? (openBlock(), createElementBlock("a", {
+						createBaseVNode("div", _hoisted_9$12, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "box" }), createTextVNode(toDisplayString(p.name), 1)]), createBaseVNode("span", _hoisted_10$11, toDisplayString(p.version), 1)]),
+						createBaseVNode("p", _hoisted_11$11, toDisplayString(p.description || ""), 1),
+						createBaseVNode("div", _hoisted_12$11, [p.web ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [p.web.ready ? (openBlock(), createElementBlock("a", {
 							key: 0,
 							class: "btn",
 							href: webUrl(p.web),
 							target: "_blank",
 							rel: "noopener noreferrer"
-						}, [createVNode(UiIcon_default, { name: "arrow-right" }), _cache[8] || (_cache[8] = createTextVNode("Открыть интерфейс ↗", -1))], 8, _hoisted_13$8)) : (openBlock(), createElementBlock("button", _hoisted_14$6, [createVNode(UiIcon_default, { name: "arrow-right" }), _cache[9] || (_cache[9] = createTextVNode("Интерфейс недоступен", -1))]))], 64)) : createCommentVNode("", true), createBaseVNode("p", _hoisted_15$5, toDisplayString(p.web_detail || "Веб-интерфейс не обнаружен") + toDisplayString(p.web?.source ? " · " + p.web.source : ""), 1)]),
+						}, [createVNode(UiIcon_default, { name: "arrow-right" }), _cache[8] || (_cache[8] = createTextVNode("Открыть интерфейс ↗", -1))], 8, _hoisted_13$10)) : (openBlock(), createElementBlock("button", _hoisted_14$9, [createVNode(UiIcon_default, { name: "arrow-right" }), _cache[9] || (_cache[9] = createTextVNode("Интерфейс недоступен", -1))]))], 64)) : createCommentVNode("", true), createBaseVNode("p", _hoisted_15$8, toDisplayString(p.web_detail || "Веб-интерфейс не обнаружен") + toDisplayString(p.web?.source ? " · " + p.web.source : ""), 1)]),
 						(openBlock(true), createElementBlock(Fragment, null, renderList(p.services, (s) => {
 							return openBlock(), createElementBlock("div", {
 								key: s.id,
 								class: "card service-card"
 							}, [
-								createBaseVNode("div", _hoisted_16$5, [createBaseVNode("b", null, toDisplayString(s.name), 1), createBaseVNode("span", _hoisted_17$5, toDisplayString(labels[s.status] || s.status), 1)]),
-								createBaseVNode("p", _hoisted_18$5, toDisplayString(detail(s)), 1),
-								createBaseVNode("div", _hoisted_19$4, [(openBlock(), createElementBlock(Fragment, null, renderList([
+								createBaseVNode("div", _hoisted_16$8, [createBaseVNode("b", null, toDisplayString(s.name), 1), createBaseVNode("span", _hoisted_17$8, toDisplayString(labels[s.status] || s.status), 1)]),
+								createBaseVNode("p", _hoisted_18$8, toDisplayString(detail(s)), 1),
+								createBaseVNode("div", _hoisted_19$6, [(openBlock(), createElementBlock(Fragment, null, renderList([
 									[
 										"start",
 										"play",
@@ -8803,13 +8863,13 @@ var AppsPage_default = /* @__PURE__ */ defineComponent({
 											action: a[0],
 											service: s.id
 										})
-									}, [createVNode(UiIcon_default, { name: a[1] }, null, 8, ["name"]), createTextVNode(toDisplayString(a[2]), 1)], 8, _hoisted_20$3);
+									}, [createVNode(UiIcon_default, { name: a[1] }, null, 8, ["name"]), createTextVNode(toDisplayString(a[2]), 1)], 8, _hoisted_20$5);
 								}), 64)), createBaseVNode("button", {
 									class: "btn sm",
 									"data-app-log": s.id,
 									onClick: ($event) => logs(s.id)
-								}, [createVNode(UiIcon_default, { name: "log" }), _cache[10] || (_cache[10] = createTextVNode("Журнал", -1))], 8, _hoisted_21$3)]),
-								createBaseVNode("label", _hoisted_22$2, [_cache[11] || (_cache[11] = createBaseVNode("span", null, "Автозапуск после загрузки колонки", -1)), createBaseVNode("input", {
+								}, [createVNode(UiIcon_default, { name: "log" }), _cache[10] || (_cache[10] = createTextVNode("Журнал", -1))], 8, _hoisted_21$4)]),
+								createBaseVNode("label", _hoisted_22$3, [_cache[11] || (_cache[11] = createBaseVNode("span", null, "Автозапуск после загрузки колонки", -1)), createBaseVNode("input", {
 									type: "checkbox",
 									"data-app-auto": s.id,
 									checked: s.autostart,
@@ -8818,10 +8878,10 @@ var AppsPage_default = /* @__PURE__ */ defineComponent({
 										action: $event.target.checked ? "enable" : "disable",
 										service: s.id
 									})
-								}, null, 40, _hoisted_23$2)])
+								}, null, 40, _hoisted_23$3)])
 							]);
 						}), 128)),
-						!p.services.length ? (openBlock(), createElementBlock("p", _hoisted_24$1, "В пакете нет деклараций служб. Запуск вручную возможен через консоль.")) : createCommentVNode("", true),
+						!p.services.length ? (openBlock(), createElementBlock("p", _hoisted_24$2, "В пакете нет деклараций служб. Запуск вручную возможен через консоль.")) : createCommentVNode("", true),
 						createBaseVNode("details", { onToggle: ($event) => $event.target.open ? unref(opened).add(p.name) : unref(opened).delete(p.name) }, [_cache[19] || (_cache[19] = createBaseVNode("summary", null, "Описание и веб-интерфейс", -1)), forms[p.name] ? (openBlock(), createElementBlock("form", {
 							key: 0,
 							"data-app-meta": p.name,
@@ -8832,7 +8892,7 @@ var AppsPage_default = /* @__PURE__ */ defineComponent({
 								class: "field",
 								name: "description",
 								maxlength: "2000"
-							}, null, 8, _hoisted_27$1), [[vModelText, forms[p.name].description]])]),
+							}, null, 8, _hoisted_27$2), [[vModelText, forms[p.name].description]])]),
 							createBaseVNode("label", null, [_cache[14] || (_cache[14] = createTextVNode("Ссылка на панель", -1)), withDirectives(createBaseVNode("select", {
 								"onUpdate:modelValue": ($event) => forms[p.name].mode = $event,
 								class: "field",
@@ -8841,8 +8901,8 @@ var AppsPage_default = /* @__PURE__ */ defineComponent({
 								createBaseVNode("option", { value: "auto" }, "Определять автоматически", -1),
 								createBaseVNode("option", { value: "manual" }, "Указать вручную", -1),
 								createBaseVNode("option", { value: "none" }, "Не показывать", -1)
-							])], 8, _hoisted_28$1), [[vModelSelect, forms[p.name].mode]])]),
-							createBaseVNode("div", _hoisted_29$1, [
+							])], 8, _hoisted_28$2), [[vModelSelect, forms[p.name].mode]])]),
+							createBaseVNode("div", _hoisted_29$2, [
 								createBaseVNode("label", null, [_cache[15] || (_cache[15] = createTextVNode("Порт HTTP (для ручного режима)", -1)), withDirectives(createBaseVNode("input", {
 									"onUpdate:modelValue": ($event) => forms[p.name].port = $event,
 									class: "field",
@@ -8851,28 +8911,28 @@ var AppsPage_default = /* @__PURE__ */ defineComponent({
 									min: "1024",
 									max: "65535",
 									placeholder: "Не задан"
-								}, null, 8, _hoisted_30$1), [[vModelText, forms[p.name].port]])]),
+								}, null, 8, _hoisted_30$2), [[vModelText, forms[p.name].port]])]),
 								createBaseVNode("label", null, [_cache[16] || (_cache[16] = createTextVNode("Путь", -1)), withDirectives(createBaseVNode("input", {
 									"onUpdate:modelValue": ($event) => forms[p.name].path = $event,
 									class: "field",
 									name: "path",
 									placeholder: "/"
-								}, null, 8, _hoisted_31$1), [[vModelText, forms[p.name].path]])]),
+								}, null, 8, _hoisted_31$2), [[vModelText, forms[p.name].path]])]),
 								createBaseVNode("button", {
 									class: "btn",
 									type: "submit",
 									disabled: unref(busy)
-								}, [createVNode(UiIcon_default, { name: "check" }), _cache[17] || (_cache[17] = createTextVNode("Сохранить", -1))], 8, _hoisted_32$1)
+								}, [createVNode(UiIcon_default, { name: "check" }), _cache[17] || (_cache[17] = createTextVNode("Сохранить", -1))], 8, _hoisted_32$2)
 							]),
 							_cache[18] || (_cache[18] = createBaseVNode("p", { class: "hint" }, "Автопоиск проверяет HTTP-панель на портах процесса приложения. Ссылка активна после ответа. Свой порт и путь применяются только в ручном режиме; порты в роутере не открываются.", -1))
-						], 40, _hoisted_26$1)) : createCommentVNode("", true)], 40, _hoisted_25$1)
+						], 40, _hoisted_26$2)) : createCommentVNode("", true)], 40, _hoisted_25$2)
 					]);
-				}), 128)), !state.value.packages?.length ? (openBlock(), createElementBlock("section", _hoisted_33$1, [
+				}), 128)), !state.value.packages?.length ? (openBlock(), createElementBlock("section", _hoisted_33$2, [
 					createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "box" }), _cache[20] || (_cache[20] = createTextVNode("Пакетов пока нет", -1))]),
 					_cache[22] || (_cache[22] = createBaseVNode("p", { class: "hint" }, "Установи приложение с декларацией службы через YAM v2.", -1)),
-					createBaseVNode("a", _hoisted_34$1, [createVNode(UiIcon_default, { name: "layers" }), _cache[21] || (_cache[21] = createTextVNode("Открыть YAM", -1))])
+					createBaseVNode("a", _hoisted_34$2, [createVNode(UiIcon_default, { name: "layers" }), _cache[21] || (_cache[21] = createTextVNode("Открыть YAM", -1))])
 				])) : createCommentVNode("", true)], 512),
-				createBaseVNode("section", _hoisted_35$1, [
+				createBaseVNode("section", _hoisted_35$2, [
 					createBaseVNode("h2", _hoisted_36$1, [createVNode(UiIcon_default, { name: "log" }), createTextVNode(toDisplayString(logService.value ? "Журнал: " + logService.value : "Журнал службы"), 1)]),
 					createBaseVNode("pre", _hoisted_37$1, toDisplayString(log.value), 1),
 					_cache[23] || (_cache[23] = createBaseVNode("p", { class: "hint" }, "До 256 КБ в файле и одна предыдущая копия на службу. На экран выводятся последние 32 КБ.", -1))
@@ -8883,125 +8943,126 @@ var AppsPage_default = /* @__PURE__ */ defineComponent({
 	}
 });
 // src/pages/YamPage.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$12 = { class: "page-head" };
-var _hoisted_2$11 = ["disabled"];
-var _hoisted_3$11 = { class: "card" };
-var _hoisted_4$10 = { class: "card-head" };
-var _hoisted_5$9 = {
+var _hoisted_1$15 = { class: "page-head" };
+var _hoisted_2$14 = ["disabled"];
+var _hoisted_3$14 = { class: "card" };
+var _hoisted_4$13 = { class: "card-head" };
+var _hoisted_5$12 = {
 	class: "badge",
 	id: "y2-version"
 };
-var _hoisted_6$9 = {
+var _hoisted_6$12 = {
 	class: "hint",
 	id: "y2-state",
 	role: "status"
 };
-var _hoisted_7$9 = { class: "row" };
-var _hoisted_8$9 = ["disabled"];
-var _hoisted_9$9 = ["disabled"];
-var _hoisted_10$8 = {
+var _hoisted_7$11 = { class: "row" };
+var _hoisted_8$11 = ["disabled"];
+var _hoisted_9$11 = ["disabled"];
+var _hoisted_10$10 = {
 	class: "btn",
 	href: "https://github.com/nyakokitsu/yam/releases",
 	target: "_blank",
 	rel: "noopener"
 };
-var _hoisted_11$8 = ["hidden"];
-var _hoisted_12$8 = ["disabled"];
-var _hoisted_13$7 = ["hidden"];
-var _hoisted_14$5 = { class: "card" };
-var _hoisted_15$4 = { class: "card-head" };
-var _hoisted_16$4 = {
+var _hoisted_11$10 = ["hidden"];
+var _hoisted_12$10 = ["disabled"];
+var _hoisted_13$9 = ["hidden"];
+var _hoisted_14$8 = { class: "card" };
+var _hoisted_15$7 = { class: "card-head" };
+var _hoisted_16$7 = {
 	class: "badge",
 	id: "y2-count"
 };
-var _hoisted_17$4 = { class: "btn upload-label" };
-var _hoisted_18$4 = ["disabled"];
-var _hoisted_19$3 = { class: "toggle" };
-var _hoisted_20$2 = ["disabled"];
-var _hoisted_21$2 = {
+var _hoisted_17$7 = { class: "btn upload-label" };
+var _hoisted_18$7 = ["disabled"];
+var _hoisted_19$5 = { class: "toggle" };
+var _hoisted_20$4 = ["disabled"];
+var _hoisted_21$3 = {
 	id: "y2-packages",
 	class: "package-list"
 };
-var _hoisted_22$1 = { class: "row" };
-var _hoisted_23$1 = [
+var _hoisted_22$2 = { class: "row" };
+var _hoisted_23$2 = ["href"];
+var _hoisted_24$1 = [
 	"data-y2-files",
 	"disabled",
 	"onClick"
 ];
-var _hoisted_24 = [
+var _hoisted_25$1 = [
 	"data-y2-remove",
 	"disabled",
 	"onClick"
 ];
-var _hoisted_25 = {
+var _hoisted_26$1 = {
 	key: 0,
 	class: "hint"
 };
-var _hoisted_26 = { class: "card" };
-var _hoisted_27 = { class: "catalog-search" };
-var _hoisted_28 = ["disabled"];
-var _hoisted_29 = ["value"];
-var _hoisted_30 = ["disabled"];
-var _hoisted_31 = ["disabled"];
-var _hoisted_32 = {
+var _hoisted_27$1 = { class: "card" };
+var _hoisted_28$1 = { class: "catalog-search" };
+var _hoisted_29$1 = ["disabled"];
+var _hoisted_30$1 = ["value"];
+var _hoisted_31$1 = ["disabled"];
+var _hoisted_32$1 = ["disabled"];
+var _hoisted_33$1 = {
 	id: "y2-results",
 	class: "package-list"
 };
-var _hoisted_33 = { class: "catalog-head" };
-var _hoisted_34 = {
+var _hoisted_34$1 = { class: "catalog-head" };
+var _hoisted_35$1 = {
 	class: "catalog-symbol",
 	"aria-hidden": "true"
 };
-var _hoisted_35 = { class: "catalog-title" };
-var _hoisted_36 = { class: "badge" };
-var _hoisted_37 = { class: "catalog-summary" };
-var _hoisted_38 = { class: "catalog-actions" };
-var _hoisted_39 = [
+var _hoisted_36 = { class: "catalog-title" };
+var _hoisted_37 = { class: "badge" };
+var _hoisted_38 = { class: "catalog-summary" };
+var _hoisted_39 = { class: "catalog-actions" };
+var _hoisted_40 = [
 	"data-y2-pick",
 	"disabled",
 	"onClick"
 ];
-var _hoisted_40 = [
+var _hoisted_41 = [
 	"data-y2-info",
 	"disabled",
 	"onClick"
 ];
-var _hoisted_41 = {
+var _hoisted_42 = {
 	key: 0,
 	class: "hint"
 };
-var _hoisted_42 = { class: "catalog-install" };
-var _hoisted_43 = ["disabled"];
+var _hoisted_43 = { class: "catalog-install" };
 var _hoisted_44 = ["disabled"];
 var _hoisted_45 = ["disabled"];
-var _hoisted_46 = { class: "card" };
-var _hoisted_47 = { id: "y2-registries" };
-var _hoisted_48 = [
+var _hoisted_46 = ["disabled"];
+var _hoisted_47 = { class: "card" };
+var _hoisted_48 = { id: "y2-registries" };
+var _hoisted_49 = [
 	"data-y2-reg-remove",
 	"disabled",
 	"onClick"
 ];
-var _hoisted_49 = {
+var _hoisted_50 = {
 	key: 0,
 	class: "hint"
 };
-var _hoisted_50 = ["disabled"];
-var _hoisted_51 = { class: "row" };
-var _hoisted_52 = ["disabled"];
+var _hoisted_51 = ["disabled"];
+var _hoisted_52 = { class: "row" };
 var _hoisted_53 = ["disabled"];
 var _hoisted_54 = ["disabled"];
 var _hoisted_55 = ["disabled"];
-var _hoisted_56 = { class: "card" };
-var _hoisted_57 = { class: "row" };
-var _hoisted_58 = ["disabled"];
+var _hoisted_56 = ["disabled"];
+var _hoisted_57 = { class: "card" };
+var _hoisted_58 = { class: "row" };
 var _hoisted_59 = ["disabled"];
 var _hoisted_60 = ["disabled"];
 var _hoisted_61 = ["disabled"];
-var _hoisted_62 = { class: "row" };
-var _hoisted_63 = ["disabled"];
+var _hoisted_62 = ["disabled"];
+var _hoisted_63 = { class: "row" };
 var _hoisted_64 = ["disabled"];
-var _hoisted_65 = { class: "card" };
-var _hoisted_66 = {
+var _hoisted_65 = ["disabled"];
+var _hoisted_66 = { class: "card" };
+var _hoisted_67 = {
 	class: "out",
 	id: "y2-report",
 	"aria-live": "polite"
@@ -9110,7 +9171,7 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 		});
 		return (_ctx, _cache) => {
 			return openBlock(), createElementBlock(Fragment, null, [
-				createBaseVNode("header", _hoisted_1$12, [createBaseVNode("div", null, [createBaseVNode("h1", null, [createVNode(UiIcon_default, {
+				createBaseVNode("header", _hoisted_1$15, [createBaseVNode("div", null, [createBaseVNode("h1", null, [createVNode(UiIcon_default, {
 					name: "layers",
 					size: 24
 				}), _cache[18] || (_cache[18] = createTextVNode("YAM v2", -1))]), _cache[19] || (_cache[19] = createBaseVNode("div", { class: "sub" }, "Пакеты .yampkg · Мини 3 Про / pickle · управление на колонке", -1))]), createBaseVNode("button", {
@@ -9123,17 +9184,17 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 							return "Данные обновлены.";
 						});
 					})
-				}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[20] || (_cache[20] = createTextVNode("Обновить данные", -1))], 8, _hoisted_2$11)]),
-				createBaseVNode("section", _hoisted_3$11, [
-					createBaseVNode("div", _hoisted_4$10, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "box" }), _cache[21] || (_cache[21] = createTextVNode("Менеджер пакетов", -1))]), createBaseVNode("span", _hoisted_5$9, toDisplayString(unref(yamVersion)), 1)]),
-					createBaseVNode("p", _hoisted_6$9, toDisplayString(state.value), 1),
-					createBaseVNode("div", _hoisted_7$9, [
+				}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[20] || (_cache[20] = createTextVNode("Обновить данные", -1))], 8, _hoisted_2$14)]),
+				createBaseVNode("section", _hoisted_3$14, [
+					createBaseVNode("div", _hoisted_4$13, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "box" }), _cache[21] || (_cache[21] = createTextVNode("Менеджер пакетов", -1))]), createBaseVNode("span", _hoisted_5$12, toDisplayString(unref(yamVersion)), 1)]),
+					createBaseVNode("p", _hoisted_6$12, toDisplayString(state.value), 1),
+					createBaseVNode("div", _hoisted_7$11, [
 						createBaseVNode("button", {
 							class: "btn primary",
 							id: "y2-bootstrap",
 							disabled: unref(busy),
 							onClick: bootstrap
-						}, [createVNode(UiIcon_default, { name: "dl" }), createTextVNode(toDisplayString(installed.value ? "Обновить YAM" : "Установить актуальный YAM"), 1)], 8, _hoisted_8$9),
+						}, [createVNode(UiIcon_default, { name: "dl" }), createTextVNode(toDisplayString(installed.value ? "Обновить YAM" : "Установить актуальный YAM"), 1)], 8, _hoisted_8$11),
 						createBaseVNode("button", {
 							class: "btn",
 							id: "y2-latest",
@@ -9144,8 +9205,8 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 									return "Последняя стабильная версия: " + v.version + "\n" + v.url;
 								});
 							})
-						}, [createVNode(UiIcon_default, { name: "search" }), _cache[22] || (_cache[22] = createTextVNode("Проверить версию", -1))], 8, _hoisted_9$9),
-						createBaseVNode("a", _hoisted_10$8, [createVNode(UiIcon_default, { name: "arrow-right" }), _cache[23] || (_cache[23] = createTextVNode("Релизы ↗", -1))])
+						}, [createVNode(UiIcon_default, { name: "search" }), _cache[22] || (_cache[22] = createTextVNode("Проверить версию", -1))], 8, _hoisted_9$11),
+						createBaseVNode("a", _hoisted_10$10, [createVNode(UiIcon_default, { name: "arrow-right" }), _cache[23] || (_cache[23] = createTextVNode("Релизы ↗", -1))])
 					]),
 					_cache[24] || (_cache[24] = createBaseVNode("details", { class: "manager-details" }, [createBaseVNode("summary", null, "Сведения о менеджере"), createBaseVNode("p", { class: "hint" }, "YAM v2 установлен в /data/yam и работает локально через CLI. Пакеты прежнего формата .yap не преобразуются в .yampkg.")], -1))
 				]),
@@ -9164,18 +9225,18 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 						id: "y2-retire",
 						disabled: unref(busy) || !installed.value,
 						onClick: retire
-					}, [createVNode(UiIcon_default, { name: "archive" }), _cache[26] || (_cache[26] = createTextVNode("Завершить переход и убрать yamd", -1))], 8, _hoisted_12$8)
-				], 8, _hoisted_11$8),
+					}, [createVNode(UiIcon_default, { name: "archive" }), _cache[26] || (_cache[26] = createTextVNode("Завершить переход и убрать yamd", -1))], 8, _hoisted_12$10)
+				], 8, _hoisted_11$10),
 				createBaseVNode("div", {
 					id: "y2-controls",
 					hidden: !installed.value
 				}, [
-					createBaseVNode("section", _hoisted_14$5, [
-						createBaseVNode("div", _hoisted_15$4, [createBaseVNode("h2", null, [
+					createBaseVNode("section", _hoisted_14$8, [
+						createBaseVNode("div", _hoisted_15$7, [createBaseVNode("h2", null, [
 							createVNode(UiIcon_default, { name: "box" }),
 							_cache[28] || (_cache[28] = createTextVNode("Установленные пакеты ", -1)),
-							createBaseVNode("span", _hoisted_16$4, toDisplayString(local.value.length), 1)
-						]), createBaseVNode("label", _hoisted_17$4, [
+							createBaseVNode("span", _hoisted_16$7, toDisplayString(local.value.length), 1)
+						]), createBaseVNode("label", _hoisted_17$7, [
 							createVNode(UiIcon_default, { name: "dl" }),
 							_cache[29] || (_cache[29] = createTextVNode("Загрузить .yampkg", -1)),
 							createBaseVNode("input", {
@@ -9187,35 +9248,45 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 								hidden: "",
 								disabled: unref(busy),
 								onChange: upload
-							}, null, 40, _hoisted_18$4)
+							}, null, 40, _hoisted_18$7)
 						])]),
-						_cache[33] || (_cache[33] = createBaseVNode("p", { class: "hint" }, "Пакеты до 32 МБ. Устанавливай их из доверенных источников: они могут выполнять системные команды.", -1)),
-						createBaseVNode("label", _hoisted_19$3, [_cache[30] || (_cache[30] = createBaseVNode("span", null, "Разрешить замену конфликтов и зависимости Entware", -1)), withDirectives(createBaseVNode("input", {
+						_cache[34] || (_cache[34] = createBaseVNode("p", { class: "hint" }, "Пакеты до 32 МБ. Устанавливай их из доверенных источников: они могут выполнять системные команды.", -1)),
+						createBaseVNode("label", _hoisted_19$5, [_cache[30] || (_cache[30] = createBaseVNode("span", null, "Разрешить замену конфликтов и зависимости Entware", -1)), withDirectives(createBaseVNode("input", {
 							type: "checkbox",
 							id: "y2-replace",
 							"onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => replace.value = $event),
 							disabled: unref(busy)
-						}, null, 8, _hoisted_20$2), [[vModelCheckbox, replace.value]])]),
-						createBaseVNode("div", _hoisted_21$2, [(openBlock(true), createElementBlock(Fragment, null, renderList(local.value, (p) => {
+						}, null, 8, _hoisted_20$4), [[vModelCheckbox, replace.value]])]),
+						createBaseVNode("div", _hoisted_21$3, [(openBlock(true), createElementBlock(Fragment, null, renderList(local.value, (p) => {
 							return openBlock(), createElementBlock("article", {
 								key: p.name,
 								class: "card package-item"
-							}, [createBaseVNode("div", null, [createBaseVNode("h3", null, [createVNode(UiIcon_default, { name: "box" }), createTextVNode(toDisplayString(p.name), 1)]), createBaseVNode("p", null, toDisplayString(p.version) + " · " + toDisplayString(p.target), 1)]), createBaseVNode("div", _hoisted_22$1, [createBaseVNode("button", {
-								class: "btn sm",
-								"data-y2-files": p.name,
-								disabled: unref(busy),
-								onClick: ($event) => operate(() => action("files", { name: p.name }))
-							}, [createVNode(UiIcon_default, { name: "folder" }), _cache[31] || (_cache[31] = createTextVNode("Файлы", -1))], 8, _hoisted_23$1), createBaseVNode("button", {
-								class: "btn sm danger",
-								"data-y2-remove": p.name,
-								disabled: unref(busy),
-								onClick: ($event) => remove(p.name)
-							}, [createVNode(UiIcon_default, { name: "trash" }), _cache[32] || (_cache[32] = createTextVNode("Удалить", -1))], 8, _hoisted_24)])]);
-						}), 128)), !local.value.length ? (openBlock(), createElementBlock("p", _hoisted_25, "Пакетов .yampkg пока нет.")) : createCommentVNode("", true)])
+							}, [createBaseVNode("div", null, [createBaseVNode("h3", null, [createVNode(UiIcon_default, { name: "box" }), createTextVNode(toDisplayString(p.name), 1)]), createBaseVNode("p", null, toDisplayString(p.version) + " · " + toDisplayString(p.target), 1)]), createBaseVNode("div", _hoisted_22$2, [
+								p.homepage?.startsWith("https://") ? (openBlock(), createElementBlock("a", {
+									key: 0,
+									class: "btn sm",
+									href: p.homepage,
+									target: "_blank",
+									rel: "noopener noreferrer"
+								}, [createVNode(UiIcon_default, { name: "arrow-right" }), _cache[31] || (_cache[31] = createTextVNode("Сайт пакета", -1))], 8, _hoisted_23$2)) : createCommentVNode("", true),
+								createBaseVNode("button", {
+									class: "btn sm",
+									"data-y2-files": p.name,
+									disabled: unref(busy),
+									onClick: ($event) => operate(() => action("files", { name: p.name }))
+								}, [createVNode(UiIcon_default, { name: "folder" }), _cache[32] || (_cache[32] = createTextVNode("Файлы", -1))], 8, _hoisted_24$1),
+								createBaseVNode("button", {
+									class: "btn sm danger",
+									"data-y2-remove": p.name,
+									disabled: unref(busy),
+									onClick: ($event) => remove(p.name)
+								}, [createVNode(UiIcon_default, { name: "trash" }), _cache[33] || (_cache[33] = createTextVNode("Удалить", -1))], 8, _hoisted_25$1)
+							])]);
+						}), 128)), !local.value.length ? (openBlock(), createElementBlock("p", _hoisted_26$1, "Пакетов .yampkg пока нет.")) : createCommentVNode("", true)])
 					]),
-					createBaseVNode("section", _hoisted_26, [
-						createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "layers" }), _cache[34] || (_cache[34] = createTextVNode("Каталог и зависимости", -1))]),
-						createBaseVNode("div", _hoisted_27, [
+					createBaseVNode("section", _hoisted_27$1, [
+						createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "layers" }), _cache[35] || (_cache[35] = createTextVNode("Каталог и зависимости", -1))]),
+						createBaseVNode("div", _hoisted_28$1, [
 							withDirectives(createBaseVNode("select", {
 								class: "field",
 								id: "y2-registry",
@@ -9226,8 +9297,8 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 								return openBlock(), createElementBlock("option", {
 									key: r.name,
 									value: r.name
-								}, toDisplayString(r.name), 9, _hoisted_29);
-							}), 128))], 8, _hoisted_28), [[vModelSelect, registry.value]]),
+								}, toDisplayString(r.name), 9, _hoisted_30$1);
+							}), 128))], 8, _hoisted_29$1), [[vModelSelect, registry.value]]),
 							withDirectives(createBaseVNode("input", {
 								class: "field",
 								id: "y2-query",
@@ -9237,38 +9308,38 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 								placeholder: "Название или описание",
 								"aria-label": "Поиск YAM",
 								onKeydown: withKeys(search, ["enter"])
-							}, null, 40, _hoisted_30), [[vModelText, query.value]]),
+							}, null, 40, _hoisted_31$1), [[vModelText, query.value]]),
 							createBaseVNode("button", {
 								class: "btn",
 								id: "y2-search",
 								disabled: unref(busy),
 								onClick: search
-							}, [createVNode(UiIcon_default, { name: "search" }), _cache[35] || (_cache[35] = createTextVNode("Найти", -1))], 8, _hoisted_31)
+							}, [createVNode(UiIcon_default, { name: "search" }), _cache[36] || (_cache[36] = createTextVNode("Найти", -1))], 8, _hoisted_32$1)
 						]),
-						createBaseVNode("div", _hoisted_32, [(openBlock(true), createElementBlock(Fragment, null, renderList(results.value, (p) => {
+						createBaseVNode("div", _hoisted_33$1, [(openBlock(true), createElementBlock(Fragment, null, renderList(results.value, (p) => {
 							return openBlock(), createElementBlock("article", {
 								key: p.name,
 								class: "card catalog-card"
 							}, [
-								createBaseVNode("div", _hoisted_33, [createBaseVNode("span", _hoisted_34, [createVNode(UiIcon_default, {
+								createBaseVNode("div", _hoisted_34$1, [createBaseVNode("span", _hoisted_35$1, [createVNode(UiIcon_default, {
 									name: "box",
 									size: 20
-								})]), createBaseVNode("div", _hoisted_35, [createBaseVNode("h3", null, toDisplayString(p.name), 1), createBaseVNode("span", _hoisted_36, toDisplayString(p.version), 1)])]),
-								createBaseVNode("p", _hoisted_37, toDisplayString(p.summary || "Описание отсутствует."), 1),
-								createBaseVNode("div", _hoisted_38, [createBaseVNode("button", {
+								})]), createBaseVNode("div", _hoisted_36, [createBaseVNode("h3", null, toDisplayString(p.name), 1), createBaseVNode("span", _hoisted_37, toDisplayString(p.version), 1)])]),
+								createBaseVNode("p", _hoisted_38, toDisplayString(p.summary || "Описание отсутствует."), 1),
+								createBaseVNode("div", _hoisted_39, [createBaseVNode("button", {
 									class: "btn sm",
 									"data-y2-pick": p.name,
 									disabled: unref(busy),
 									onClick: ($event) => pick(p.name)
-								}, [createVNode(UiIcon_default, { name: "plus" }), _cache[36] || (_cache[36] = createTextVNode("Выбрать", -1))], 8, _hoisted_39), createBaseVNode("button", {
+								}, [createVNode(UiIcon_default, { name: "plus" }), _cache[37] || (_cache[37] = createTextVNode("Выбрать", -1))], 8, _hoisted_40), createBaseVNode("button", {
 									class: "btn sm",
 									"data-y2-info": p.name,
 									disabled: unref(busy),
 									onClick: ($event) => operate(() => action("info", { name: p.name }))
-								}, [createVNode(UiIcon_default, { name: "info" }), _cache[37] || (_cache[37] = createTextVNode("Описание", -1))], 8, _hoisted_40)])
+								}, [createVNode(UiIcon_default, { name: "info" }), _cache[38] || (_cache[38] = createTextVNode("Описание", -1))], 8, _hoisted_41)])
 							]);
-						}), 128)), searched.value && !results.value.length ? (openBlock(), createElementBlock("p", _hoisted_41, "По этому запросу пакетов нет.")) : createCommentVNode("", true)]),
-						createBaseVNode("div", _hoisted_42, [
+						}), 128)), searched.value && !results.value.length ? (openBlock(), createElementBlock("p", _hoisted_42, "По этому запросу пакетов нет.")) : createCommentVNode("", true)]),
+						createBaseVNode("div", _hoisted_43, [
 							withDirectives(createBaseVNode("input", {
 								class: "field",
 								id: "y2-name",
@@ -9276,25 +9347,25 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 								disabled: unref(busy),
 								placeholder: "namespace/name[@версия]",
 								"aria-label": "Имя пакета"
-							}, null, 8, _hoisted_43), [[vModelText, name.value]]),
+							}, null, 8, _hoisted_44), [[vModelText, name.value]]),
 							createBaseVNode("button", {
 								class: "btn",
 								id: "y2-plan",
 								disabled: unref(busy),
 								onClick: _cache[6] || (_cache[6] = ($event) => operate(() => action("plan", { name: name.value.trim() })))
-							}, [createVNode(UiIcon_default, { name: "layers" }), _cache[38] || (_cache[38] = createTextVNode("Показать зависимости", -1))], 8, _hoisted_44),
+							}, [createVNode(UiIcon_default, { name: "layers" }), _cache[39] || (_cache[39] = createTextVNode("Показать зависимости", -1))], 8, _hoisted_45),
 							createBaseVNode("button", {
 								class: "btn primary",
 								id: "y2-install",
 								disabled: unref(busy),
 								onClick: install
-							}, [createVNode(UiIcon_default, { name: "dl" }), _cache[39] || (_cache[39] = createTextVNode("Установить", -1))], 8, _hoisted_45)
+							}, [createVNode(UiIcon_default, { name: "dl" }), _cache[40] || (_cache[40] = createTextVNode("Установить", -1))], 8, _hoisted_46)
 						]),
-						_cache[40] || (_cache[40] = createBaseVNode("p", { class: "hint" }, "Каталог и индексы проверяются ключом Ed25519, скачанные пакеты — по размеру и SHA-256. Сначала проверь план установки: он не изменяет пакеты.", -1))
+						_cache[41] || (_cache[41] = createBaseVNode("p", { class: "hint" }, "Каталог и индексы проверяются ключом Ed25519, скачанные пакеты — по размеру и SHA-256. Сначала проверь план установки: он не изменяет пакеты.", -1))
 					]),
-					createBaseVNode("section", _hoisted_46, [
-						createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "layers" }), _cache[41] || (_cache[41] = createTextVNode("Реестры", -1))]),
-						createBaseVNode("div", _hoisted_47, [(openBlock(true), createElementBlock(Fragment, null, renderList(registries.value, (r) => {
+					createBaseVNode("section", _hoisted_47, [
+						createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "layers" }), _cache[42] || (_cache[42] = createTextVNode("Реестры", -1))]),
+						createBaseVNode("div", _hoisted_48, [(openBlock(true), createElementBlock(Fragment, null, renderList(registries.value, (r) => {
 							return openBlock(), createElementBlock("div", {
 								key: r.name,
 								class: "summary-row"
@@ -9303,22 +9374,22 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 								"data-y2-reg-remove": r.name,
 								disabled: unref(busy),
 								onClick: ($event) => removeRegistry(r.name)
-							}, [createVNode(UiIcon_default, { name: "trash" }), _cache[42] || (_cache[42] = createTextVNode("Удалить", -1))], 8, _hoisted_48)]);
-						}), 128)), !registries.value.length ? (openBlock(), createElementBlock("p", _hoisted_49, "Реестр ещё не подключён. Добавь официальный реестр для поиска и установки по имени.")) : createCommentVNode("", true)]),
+							}, [createVNode(UiIcon_default, { name: "trash" }), _cache[43] || (_cache[43] = createTextVNode("Удалить", -1))], 8, _hoisted_49)]);
+						}), 128)), !registries.value.length ? (openBlock(), createElementBlock("p", _hoisted_50, "Реестр ещё не подключён. Добавь официальный реестр для поиска и установки по имени.")) : createCommentVNode("", true)]),
 						createBaseVNode("button", {
 							class: "btn",
 							id: "y2-official",
 							disabled: unref(busy),
 							onClick: _cache[7] || (_cache[7] = ($event) => operate(() => action("official-registry")))
-						}, [createVNode(UiIcon_default, { name: "plus" }), _cache[43] || (_cache[43] = createTextVNode("Подключить официальный реестр", -1))], 8, _hoisted_50),
-						createBaseVNode("details", null, [_cache[45] || (_cache[45] = createBaseVNode("summary", null, "Добавить другой реестр", -1)), createBaseVNode("div", _hoisted_51, [
+						}, [createVNode(UiIcon_default, { name: "plus" }), _cache[44] || (_cache[44] = createTextVNode("Подключить официальный реестр", -1))], 8, _hoisted_51),
+						createBaseVNode("details", null, [_cache[46] || (_cache[46] = createBaseVNode("summary", null, "Добавить другой реестр", -1)), createBaseVNode("div", _hoisted_52, [
 							withDirectives(createBaseVNode("input", {
 								class: "field",
 								id: "y2-reg-name",
 								"onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => regName.value = $event),
 								disabled: unref(busy),
 								placeholder: "Имя"
-							}, null, 8, _hoisted_52), [[vModelText, regName.value]]),
+							}, null, 8, _hoisted_53), [[vModelText, regName.value]]),
 							withDirectives(createBaseVNode("input", {
 								class: "field",
 								id: "y2-reg-url",
@@ -9326,14 +9397,14 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 								disabled: unref(busy),
 								type: "url",
 								placeholder: "https://repo.example/v2"
-							}, null, 8, _hoisted_53), [[vModelText, regUrl.value]]),
+							}, null, 8, _hoisted_54), [[vModelText, regUrl.value]]),
 							withDirectives(createBaseVNode("input", {
 								class: "field",
 								id: "y2-reg-key",
 								"onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => regKey.value = $event),
 								disabled: unref(busy),
 								placeholder: "ed25519:публичный-ключ-Base64"
-							}, null, 8, _hoisted_54), [[vModelText, regKey.value]]),
+							}, null, 8, _hoisted_55), [[vModelText, regKey.value]]),
 							createBaseVNode("button", {
 								class: "btn",
 								id: "y2-reg-add",
@@ -9343,101 +9414,102 @@ var YamPage_default = /* @__PURE__ */ defineComponent({
 									url: regUrl.value.trim(),
 									key: regKey.value.trim()
 								})))
-							}, [createVNode(UiIcon_default, { name: "plus" }), _cache[44] || (_cache[44] = createTextVNode("Добавить", -1))], 8, _hoisted_55)
+							}, [createVNode(UiIcon_default, { name: "plus" }), _cache[45] || (_cache[45] = createTextVNode("Добавить", -1))], 8, _hoisted_56)
 						])])
 					]),
-					createBaseVNode("section", _hoisted_56, [
-						createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "shield" }), _cache[46] || (_cache[46] = createTextVNode("Диагностика и службы", -1))]),
-						createBaseVNode("div", _hoisted_57, [
+					createBaseVNode("section", _hoisted_57, [
+						createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "shield" }), _cache[47] || (_cache[47] = createTextVNode("Диагностика и службы", -1))]),
+						createBaseVNode("div", _hoisted_58, [
 							createBaseVNode("button", {
 								class: "btn",
 								id: "y2-doctor",
 								disabled: unref(busy),
 								onClick: _cache[12] || (_cache[12] = ($event) => operate(() => action("doctor")))
-							}, [createVNode(UiIcon_default, { name: "shield" }), _cache[47] || (_cache[47] = createTextVNode("Проверить пакеты (doctor)", -1))], 8, _hoisted_58),
+							}, [createVNode(UiIcon_default, { name: "shield" }), _cache[48] || (_cache[48] = createTextVNode("Проверить пакеты (doctor)", -1))], 8, _hoisted_59),
 							createBaseVNode("button", {
 								class: "btn",
 								id: "y2-repair",
 								disabled: unref(busy),
 								onClick: _cache[13] || (_cache[13] = ($event) => unref(confirm)("Восстановить ссылки пакетов по базе YAM?") && operate(() => action("repair")))
-							}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[48] || (_cache[48] = createTextVNode("Восстановить ссылки (repair)", -1))], 8, _hoisted_59),
+							}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[49] || (_cache[49] = createTextVNode("Восстановить ссылки (repair)", -1))], 8, _hoisted_60),
 							createBaseVNode("button", {
 								class: "btn",
 								id: "y2-entware",
 								disabled: unref(busy),
 								onClick: _cache[14] || (_cache[14] = ($event) => operate(() => action("entware")))
-							}, [createVNode(UiIcon_default, { name: "server" }), _cache[49] || (_cache[49] = createTextVNode("Проверить Entware", -1))], 8, _hoisted_60),
+							}, [createVNode(UiIcon_default, { name: "server" }), _cache[50] || (_cache[50] = createTextVNode("Проверить Entware", -1))], 8, _hoisted_61),
 							createBaseVNode("button", {
 								class: "btn",
 								id: "y2-services",
 								disabled: unref(busy),
 								onClick: _cache[15] || (_cache[15] = ($event) => operate(() => call("services")))
-							}, [createVNode(UiIcon_default, { name: "layers" }), _cache[50] || (_cache[50] = createTextVNode("Декларации служб", -1))], 8, _hoisted_61)
+							}, [createVNode(UiIcon_default, { name: "layers" }), _cache[51] || (_cache[51] = createTextVNode("Декларации служб", -1))], 8, _hoisted_62)
 						]),
-						_cache[52] || (_cache[52] = createBaseVNode("p", { class: "hint" }, "Службы запускает хост панели в разделе «Приложения». YAM управляет установкой пакетов; правила запуска и автозапуска сохраняются отдельно.", -1)),
-						createBaseVNode("div", _hoisted_62, [withDirectives(createBaseVNode("input", {
+						_cache[53] || (_cache[53] = createBaseVNode("p", { class: "hint" }, "Службы запускает хост панели в разделе «Приложения». YAM управляет установкой пакетов; правила запуска и автозапуска сохраняются отдельно.", -1)),
+						createBaseVNode("div", _hoisted_63, [withDirectives(createBaseVNode("input", {
 							class: "field",
 							id: "y2-path",
 							"onUpdate:modelValue": _cache[16] || (_cache[16] = ($event) => path.value = $event),
 							disabled: unref(busy),
 							placeholder: "bin/команда",
 							"aria-label": "Относительный путь"
-						}, null, 8, _hoisted_63), [[vModelText, path.value]]), createBaseVNode("button", {
+						}, null, 8, _hoisted_64), [[vModelText, path.value]]), createBaseVNode("button", {
 							class: "btn",
 							id: "y2-which",
 							disabled: unref(busy),
 							onClick: _cache[17] || (_cache[17] = ($event) => operate(() => action("which", { path: path.value.trim() })))
-						}, [createVNode(UiIcon_default, { name: "search" }), _cache[51] || (_cache[51] = createTextVNode("Найти владельца файла", -1))], 8, _hoisted_64)])
+						}, [createVNode(UiIcon_default, { name: "search" }), _cache[52] || (_cache[52] = createTextVNode("Найти владельца файла", -1))], 8, _hoisted_65)])
 					])
-				], 8, _hoisted_13$7),
-				createBaseVNode("section", _hoisted_65, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[53] || (_cache[53] = createTextVNode("Результат операции", -1))]), createBaseVNode("pre", _hoisted_66, toDisplayString(unref(report)), 1)])
+				], 8, _hoisted_13$9),
+				createBaseVNode("section", _hoisted_66, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[54] || (_cache[54] = createTextVNode("Результат операции", -1))]), createBaseVNode("pre", _hoisted_67, toDisplayString(unref(report)), 1)])
 			], 64);
 		};
 	}
 });
 // src/pages/UpdatesPage.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$11 = { class: "page-head" };
-var _hoisted_2$10 = {
+var _hoisted_1$14 = { class: "page-head" };
+var _hoisted_2$13 = {
 	class: "card",
 	id: "native-updates"
 };
-var _hoisted_3$10 = { class: "card-head" };
-var _hoisted_4$9 = { class: "set-item" };
-var _hoisted_5$8 = { class: "set-ctl" };
-var _hoisted_6$8 = { class: "toggle" };
-var _hoisted_7$8 = { class: "row" };
-var _hoisted_8$8 = ["disabled"];
-var _hoisted_9$8 = ["disabled"];
-var _hoisted_10$7 = ["disabled", "hidden"];
-var _hoisted_11$7 = {
+var _hoisted_3$13 = { class: "card-head" };
+var _hoisted_4$12 = { class: "set-item" };
+var _hoisted_5$11 = { class: "set-ctl" };
+var _hoisted_6$11 = { class: "toggle" };
+var _hoisted_7$10 = { class: "row" };
+var _hoisted_8$10 = ["disabled"];
+var _hoisted_9$10 = ["disabled"];
+var _hoisted_10$9 = ["disabled", "hidden"];
+var _hoisted_11$9 = {
 	class: "hint",
 	id: "native-update-status"
 };
-var _hoisted_12$7 = {
+var _hoisted_12$9 = {
 	class: "out",
 	id: "native-notes"
 };
-var _hoisted_13$6 = {
+var _hoisted_13$8 = {
 	class: "hint",
 	id: "native-checked"
 };
-var _hoisted_14$4 = { class: "toggle" };
-var _hoisted_15$3 = {
+var _hoisted_14$7 = { class: "toggle" };
+var _hoisted_15$6 = { class: "toggle" };
+var _hoisted_16$6 = {
 	class: "hint",
 	id: "native-space"
 };
-var _hoisted_16$3 = {
+var _hoisted_17$6 = {
 	class: "hint",
 	id: "native-cleanup-status"
 };
-var _hoisted_17$3 = ["disabled"];
-var _hoisted_18$3 = ["disabled"];
-var _hoisted_19$2 = { class: "card" };
+var _hoisted_18$6 = ["disabled"];
+var _hoisted_19$4 = ["disabled"];
+var _hoisted_20$3 = { class: "card" };
 // src/pages/UpdatesPage.vue
 var UpdatesPage_default = /* @__PURE__ */ defineComponent({
 	__name: "UpdatesPage",
 	setup(__props) {
-		const api = useApi(), info = /* @__PURE__ */ ref({ status: {} }), feed = /* @__PURE__ */ ref(""), auto = /* @__PURE__ */ ref(false), autoCleanup = /* @__PURE__ */ ref(true), { busy, message, run } = useAction();
+		const api = useApi(), info = /* @__PURE__ */ ref({ status: {} }), feed = /* @__PURE__ */ ref(""), auto = /* @__PURE__ */ ref(false), autoCleanup = /* @__PURE__ */ ref(true), keepPrevious = /* @__PURE__ */ ref(true), { busy, message, run } = useAction();
 		const statusText = computed(() => message.value || info.value.status?.error || (info.value.status?.pending ? "Ожидаем запуск " + info.value.status.pending : info.value.status?.available ? "Доступна " + info.value.status.latest : "Установлена " + (info.value.installed || "…")) + (info.value.feed ? "" : " · источник обновлений не настроен"));
 		const checkedText = computed(() => "Последняя проверка: " + stamp(info.value.status?.checked) + "\nПредыдущая сборка: " + (info.value.previous || "нет"));
 		const spaceText = computed(() => info.value.free === void 0 ? "" : "Свободно: " + (info.value.free / 1048576).toFixed(1) + " МБ · для обновления: " + Math.ceil(info.value.required_free / 1048576) + " МБ");
@@ -9452,15 +9524,18 @@ var UpdatesPage_default = /* @__PURE__ */ defineComponent({
 				if (force || !baseline || JSON.stringify([
 					feed.value,
 					auto.value,
-					autoCleanup.value
+					autoCleanup.value,
+					keepPrevious.value
 				]) === baseline) {
 					feed.value = info.value.feed || "";
 					auto.value = info.value.auto;
 					autoCleanup.value = info.value.auto_cleanup !== false;
+					keepPrevious.value = info.value.keep_previous !== false;
 					baseline = JSON.stringify([
 						feed.value,
 						auto.value,
-						autoCleanup.value
+						autoCleanup.value,
+						keepPrevious.value
 					]);
 				}
 			} catch (e) {
@@ -9475,11 +9550,13 @@ var UpdatesPage_default = /* @__PURE__ */ defineComponent({
 			});
 		}
 		function save() {
+			if (!keepPrevious.value && info.value.previous && info.value.keep_previous !== false && !confirm("Удалить предыдущую сборку после сохранения? Она нужна для ручного отката.")) return;
 			run(async () => {
 				await api("/api/native/updates/config", {
 					feed: feed.value.trim(),
 					auto: auto.value,
-					auto_cleanup: autoCleanup.value
+					auto_cleanup: autoCleanup.value,
+					keep_previous: keepPrevious.value
 				});
 				message.value = "";
 				await load(true);
@@ -9499,11 +9576,11 @@ var UpdatesPage_default = /* @__PURE__ */ defineComponent({
 		});
 		return (_ctx, _cache) => {
 			return openBlock(), createElementBlock(Fragment, null, [
-				createBaseVNode("header", _hoisted_1$11, [createBaseVNode("h1", null, [createVNode(UiIcon_default, { name: "refresh" }), _cache[7] || (_cache[7] = createTextVNode("Обновления панели", -1))])]),
-				createBaseVNode("section", _hoisted_2$10, [
-					createBaseVNode("div", _hoisted_3$10, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "refresh" }), _cache[8] || (_cache[8] = createTextVNode("Обновления панели", -1))]), _cache[9] || (_cache[9] = createBaseVNode("span", { class: "badge ok" }, "На колонке", -1))]),
-					_cache[18] || (_cache[18] = createBaseVNode("p", { class: "hint" }, "ПК не нужен. Обновляется только панель; runtime, данные, YAM и прошивка не заменяются.", -1)),
-					createBaseVNode("label", _hoisted_4$9, [_cache[10] || (_cache[10] = createBaseVNode("div", { class: "set-label" }, [createBaseVNode("b", null, "Источник обновлений"), createBaseVNode("small", null, "HTTPS-манифест из своего репозитория GitHub")], -1)), createBaseVNode("div", _hoisted_5$8, [withDirectives(createBaseVNode("input", {
+				createBaseVNode("header", _hoisted_1$14, [createBaseVNode("h1", null, [createVNode(UiIcon_default, { name: "refresh" }), _cache[8] || (_cache[8] = createTextVNode("Обновления панели", -1))])]),
+				createBaseVNode("section", _hoisted_2$13, [
+					createBaseVNode("div", _hoisted_3$13, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "refresh" }), _cache[9] || (_cache[9] = createTextVNode("Обновления панели", -1))]), _cache[10] || (_cache[10] = createBaseVNode("span", { class: "badge ok" }, "На колонке", -1))]),
+					_cache[20] || (_cache[20] = createBaseVNode("p", { class: "hint" }, "ПК не нужен. Обновляется только панель; runtime, данные, YAM и прошивка не заменяются.", -1)),
+					createBaseVNode("label", _hoisted_4$12, [_cache[11] || (_cache[11] = createBaseVNode("div", { class: "set-label" }, [createBaseVNode("b", null, "Источник обновлений"), createBaseVNode("small", null, "HTTPS-манифест из своего репозитория GitHub")], -1)), createBaseVNode("div", _hoisted_5$11, [withDirectives(createBaseVNode("input", {
 						class: "field",
 						id: "native-feed",
 						type: "url",
@@ -9511,81 +9588,96 @@ var UpdatesPage_default = /* @__PURE__ */ defineComponent({
 						"aria-label": "Источник обновлений",
 						"onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => feed.value = $event)
 					}, null, 512), [[vModelText, feed.value]])])]),
-					createBaseVNode("label", _hoisted_6$8, [_cache[11] || (_cache[11] = createBaseVNode("span", null, "Автоматически проверять и устанавливать обновления", -1)), withDirectives(createBaseVNode("input", {
+					createBaseVNode("label", _hoisted_6$11, [_cache[12] || (_cache[12] = createBaseVNode("span", null, "Автоматически проверять и устанавливать обновления", -1)), withDirectives(createBaseVNode("input", {
 						type: "checkbox",
 						id: "native-auto",
 						"onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => auto.value = $event)
 					}, null, 512), [[vModelCheckbox, auto.value]])]),
-					createBaseVNode("div", _hoisted_7$8, [
+					createBaseVNode("div", _hoisted_7$10, [
 						createBaseVNode("button", {
 							class: "btn",
 							id: "native-save",
 							onClick: save,
 							disabled: unref(busy)
-						}, [createVNode(UiIcon_default, { name: "check" }), _cache[12] || (_cache[12] = createTextVNode("Сохранить", -1))], 8, _hoisted_8$8),
+						}, [createVNode(UiIcon_default, { name: "check" }), _cache[13] || (_cache[13] = createTextVNode("Сохранить", -1))], 8, _hoisted_8$10),
 						createBaseVNode("button", {
 							class: "btn",
 							id: "native-check",
 							onClick: _cache[2] || (_cache[2] = ($event) => operate("check")),
 							disabled: unref(busy) || !feed.value
-						}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[13] || (_cache[13] = createTextVNode("Проверить", -1))], 8, _hoisted_9$8),
+						}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[14] || (_cache[14] = createTextVNode("Проверить", -1))], 8, _hoisted_9$10),
 						createBaseVNode("button", {
 							class: "btn primary",
 							id: "native-apply",
 							onClick: _cache[3] || (_cache[3] = ($event) => install("apply")),
 							disabled: unref(busy),
 							hidden: !info.value.status?.available
-						}, [createVNode(UiIcon_default, { name: "dl" }), _cache[14] || (_cache[14] = createTextVNode("Установить обновление", -1))], 8, _hoisted_10$7)
+						}, [createVNode(UiIcon_default, { name: "dl" }), _cache[15] || (_cache[15] = createTextVNode("Установить обновление", -1))], 8, _hoisted_10$9)
 					]),
-					createBaseVNode("p", _hoisted_11$7, toDisplayString(statusText.value), 1),
-					createBaseVNode("pre", _hoisted_12$7, toDisplayString(info.value.status?.notes || "Описание изменений отсутствует."), 1),
-					createBaseVNode("p", _hoisted_13$6, toDisplayString(checkedText.value), 1),
-					createBaseVNode("label", _hoisted_14$4, [_cache[15] || (_cache[15] = createBaseVNode("span", null, "Автоматически очищать неиспользуемые сборки панели", -1)), withDirectives(createBaseVNode("input", {
+					createBaseVNode("p", _hoisted_11$9, toDisplayString(statusText.value), 1),
+					createBaseVNode("pre", _hoisted_12$9, toDisplayString(info.value.status?.notes || "Описание изменений отсутствует."), 1),
+					createBaseVNode("p", _hoisted_13$8, toDisplayString(checkedText.value), 1),
+					createBaseVNode("label", _hoisted_14$7, [_cache[16] || (_cache[16] = createBaseVNode("span", null, "Автоматически очищать неиспользуемые сборки панели", -1)), withDirectives(createBaseVNode("input", {
 						type: "checkbox",
 						id: "native-cleanup-auto",
 						checked: "",
 						"onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => autoCleanup.value = $event)
 					}, null, 512), [[vModelCheckbox, autoCleanup.value]])]),
-					_cache[19] || (_cache[19] = createBaseVNode("p", { class: "hint" }, "Очистка каждый час и перед проверкой/установкой обновления. Сохраняются текущая и предыдущая сборки, данные приложений и резервные копии.", -1)),
-					createBaseVNode("p", _hoisted_15$3, toDisplayString(spaceText.value), 1),
-					createBaseVNode("p", _hoisted_16$3, toDisplayString(cleanupText.value), 1),
+					_cache[21] || (_cache[21] = createBaseVNode("p", { class: "hint" }, "Очистка каждый час и перед проверкой или установкой обновления.", -1)),
+					createBaseVNode("label", _hoisted_15$6, [_cache[17] || (_cache[17] = createBaseVNode("span", null, "Хранить предыдущую сборку для ручного отката", -1)), withDirectives(createBaseVNode("input", {
+						type: "checkbox",
+						id: "native-keep-previous",
+						"onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => keepPrevious.value = $event)
+					}, null, 512), [[vModelCheckbox, keepPrevious.value]])]),
+					_cache[22] || (_cache[22] = createBaseVNode("p", { class: "hint" }, "При выключенной настройке предыдущая сборка удаляется после успешного запуска новой.", -1)),
+					createBaseVNode("p", _hoisted_16$6, toDisplayString(spaceText.value), 1),
+					createBaseVNode("p", _hoisted_17$6, toDisplayString(cleanupText.value), 1),
 					createBaseVNode("button", {
 						class: "btn",
 						id: "native-cleanup",
-						onClick: _cache[5] || (_cache[5] = ($event) => operate("cleanup")),
+						onClick: _cache[6] || (_cache[6] = ($event) => operate("cleanup")),
 						disabled: unref(busy)
-					}, [createVNode(UiIcon_default, { name: "trash" }), _cache[16] || (_cache[16] = createTextVNode("Очистить сейчас", -1))], 8, _hoisted_17$3),
+					}, [createVNode(UiIcon_default, { name: "trash" }), _cache[18] || (_cache[18] = createTextVNode("Очистить сейчас", -1))], 8, _hoisted_18$6),
 					createBaseVNode("button", {
 						class: "btn danger",
 						id: "native-rollback",
-						onClick: _cache[6] || (_cache[6] = ($event) => install("rollback")),
+						onClick: _cache[7] || (_cache[7] = ($event) => install("rollback")),
 						disabled: unref(busy) || !info.value.previous || !!info.value.status?.pending
-					}, [createVNode(UiIcon_default, { name: "undo" }), _cache[17] || (_cache[17] = createTextVNode("Вернуться к предыдущей версии", -1))], 8, _hoisted_18$3)
+					}, [createVNode(UiIcon_default, { name: "undo" }), _cache[19] || (_cache[19] = createTextVNode("Вернуться к предыдущей версии", -1))], 8, _hoisted_19$4)
 				]),
-				createBaseVNode("section", _hoisted_19$2, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[20] || (_cache[20] = createTextVNode("Источник обновлений", -1))]), _cache[21] || (_cache[21] = createBaseVNode("p", { class: "hint" }, "Укажи HTTPS-адрес update.json своего репозитория GitHub. Пока релиз не опубликован, проверка через интернет недоступна. Автообновление скачивает и устанавливает новую сборку каждые 6 часов; при неудачном запуске служба возвращает предыдущую.", -1))])
+				createBaseVNode("section", _hoisted_20$3, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[23] || (_cache[23] = createTextVNode("Источник обновлений", -1))]), _cache[24] || (_cache[24] = createBaseVNode("p", { class: "hint" }, "Укажи HTTPS-адрес update.json своего репозитория GitHub. Пока релиз не опубликован, проверка через интернет недоступна. Автообновление скачивает и устанавливает новую сборку каждые 6 часов; при неудачном запуске служба возвращает предыдущую.", -1))])
 			], 64);
 		};
 	}
 });
 // src/components/OnDeviceAssistant.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$10 = { class: "card" };
-var _hoisted_2$9 = { class: "card-head" };
-var _hoisted_3$9 = { class: "badge" };
-var _hoisted_4$8 = {
+var _hoisted_1$13 = { class: "card" };
+var _hoisted_2$12 = { class: "card-head" };
+var _hoisted_3$12 = { class: "badge" };
+var _hoisted_4$11 = {
 	key: 0,
 	role: "status",
 	class: "hint"
 };
-var _hoisted_5$7 = ["placeholder"];
-var _hoisted_6$7 = { class: "toggle" };
-var _hoisted_7$7 = { class: "row" };
-var _hoisted_8$7 = ["disabled"];
-var _hoisted_9$7 = ["disabled"];
-var _hoisted_10$6 = ["disabled"];
-var _hoisted_11$6 = ["disabled"];
-var _hoisted_12$6 = ["disabled"];
-var _hoisted_13$5 = { class: "hint" };
-var endpoint$2 = "/api/native/assistant";
+var _hoisted_5$10 = { key: 0 };
+var _hoisted_6$10 = ["value"];
+var _hoisted_7$9 = ["disabled"];
+var _hoisted_8$9 = ["placeholder"];
+var _hoisted_9$9 = { class: "toggle" };
+var _hoisted_10$8 = { class: "toggle" };
+var _hoisted_11$8 = {
+	key: 0,
+	class: "row"
+};
+var _hoisted_12$8 = { class: "toggle" };
+var _hoisted_13$7 = { class: "row" };
+var _hoisted_14$6 = ["disabled"];
+var _hoisted_15$5 = ["disabled"];
+var _hoisted_16$5 = ["disabled"];
+var _hoisted_17$5 = ["disabled"];
+var _hoisted_18$5 = ["disabled"];
+var _hoisted_19$3 = { class: "hint" };
+var endpoint$3 = "/api/native/assistant";
 // src/components/OnDeviceAssistant.vue
 var OnDeviceAssistant_default = /* @__PURE__ */ defineComponent({
 	__name: "OnDeviceAssistant",
@@ -9598,18 +9690,39 @@ var OnDeviceAssistant_default = /* @__PURE__ */ defineComponent({
 		const key = /* @__PURE__ */ ref("");
 		const confirmed = /* @__PURE__ */ ref(false);
 		const question = /* @__PURE__ */ ref("");
+		const transport = /* @__PURE__ */ ref("chat");
+		const time = /* @__PURE__ */ ref(true);
+		const weather = /* @__PURE__ */ ref(false);
+		const city = /* @__PURE__ */ ref("");
+		const lat = /* @__PURE__ */ ref("");
+		const lon = /* @__PURE__ */ ref("");
+		function chooseProfile(event) {
+			const saved = state.value?.profiles?.[Number(event.target.value)];
+			if (saved) {
+				url.value = saved.url;
+				model.value = saved.model;
+				transport.value = saved.transport || "chat";
+				key.value = "";
+			}
+		}
 		function update(value, fields = false) {
 			if (!state.value || fields) {
 				url.value = value.url || url.value;
 				model.value = value.model;
+				transport.value = value.transport || "chat";
 				confirmed.value = value.confirmed;
+				time.value = value.skills?.time ?? true;
+				weather.value = value.skills?.weather ?? false;
+				city.value = value.weather?.city || "";
+				lat.value = value.weather?.lat ?? "";
+				lon.value = value.weather?.lon ?? "";
 			}
 			state.value = value;
 		}
 		async function load() {
 			if (route.active !== "chatgpt" || busy.value) return;
 			try {
-				update(await api(endpoint$2));
+				update(await api(endpoint$3));
 			} catch (error) {
 				message.value = error.message;
 			}
@@ -9621,9 +9734,19 @@ var OnDeviceAssistant_default = /* @__PURE__ */ defineComponent({
 					url: url.value.trim(),
 					model: model.value.trim(),
 					key: key.value.trim(),
-					confirmed: confirmed.value
+					confirmed: confirmed.value,
+					transport: transport.value,
+					skills: {
+						time: time.value,
+						weather: weather.value
+					},
+					weather: {
+						city: city.value,
+						lat: lat.value,
+						lon: lon.value
+					}
 				} : action === "ask" ? { text: question.value.trim() } : {};
-				update(await api(endpoint$2, {
+				update(await api(endpoint$3, {
 					action,
 					...data
 				}), action === "config");
@@ -9633,85 +9756,152 @@ var OnDeviceAssistant_default = /* @__PURE__ */ defineComponent({
 			});
 		}
 		return (_ctx, _cache) => {
-			return openBlock(), createElementBlock("section", _hoisted_1$10, [
-				createBaseVNode("div", _hoisted_2$9, [_cache[10] || (_cache[10] = createBaseVNode("h2", null, "Помощник на колонке", -1)), createBaseVNode("span", _hoisted_3$9, toDisplayString(state.value?.running ? "Запущен" : state.value?.enabled ? "Запускается" : "Остановлен"), 1)]),
-				_cache[16] || (_cache[16] = createBaseVNode("p", { class: "hint" }, "Экспериментальный режим для Мини 3 Про. Для проверки сначала останови другой голосовой мост.", -1)),
-				unref(message) || state.value?.error ? (openBlock(), createElementBlock("p", _hoisted_4$8, toDisplayString(unref(message) || state.value?.error), 1)) : createCommentVNode("", true),
+			return openBlock(), createElementBlock("section", _hoisted_1$13, [
+				createBaseVNode("div", _hoisted_2$12, [_cache[16] || (_cache[16] = createBaseVNode("h2", null, "Помощник на колонке", -1)), createBaseVNode("span", _hoisted_3$12, toDisplayString(state.value?.running ? "Запущен" : state.value?.enabled ? "Запускается" : "Остановлен"), 1)]),
+				_cache[33] || (_cache[33] = createBaseVNode("p", { class: "hint" }, "Экспериментальный режим для Мини 3 Про. Для проверки сначала останови другой голосовой мост.", -1)),
+				unref(message) || state.value?.error ? (openBlock(), createElementBlock("p", _hoisted_4$11, toDisplayString(unref(message) || state.value?.error), 1)) : createCommentVNode("", true),
 				state.value ? (openBlock(), createElementBlock("form", {
 					key: 1,
 					class: "col",
-					onSubmit: _cache[7] || (_cache[7] = withModifiers(($event) => send("config"), ["prevent"]))
+					onSubmit: _cache[13] || (_cache[13] = withModifiers(($event) => send("config"), ["prevent"]))
 				}, [
-					createBaseVNode("label", null, [_cache[11] || (_cache[11] = createTextVNode("Адрес OpenAI-совместимого API ", -1)), withDirectives(createBaseVNode("input", {
+					state.value.profiles?.length ? (openBlock(), createElementBlock("label", _hoisted_5$10, [_cache[18] || (_cache[18] = createTextVNode("Сохранённое подключение ", -1)), createBaseVNode("select", {
+						class: "field",
+						onChange: chooseProfile
+					}, [_cache[17] || (_cache[17] = createBaseVNode("option", {
+						selected: "",
+						disabled: "",
+						value: ""
+					}, "Выбрать профиль", -1)), (openBlock(true), createElementBlock(Fragment, null, renderList(state.value.profiles, (profile, index) => {
+						return openBlock(), createElementBlock("option", {
+							key: index,
+							value: index
+						}, toDisplayString(profile.model) + " · " + toDisplayString(profile.url), 9, _hoisted_6$10);
+					}), 128))], 32)])) : createCommentVNode("", true),
+					createBaseVNode("label", null, [_cache[19] || (_cache[19] = createTextVNode("Адрес OpenAI-совместимого API ", -1)), withDirectives(createBaseVNode("input", {
 						"onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => url.value = $event),
 						type: "url",
 						class: "field",
 						required: ""
 					}, null, 512), [[vModelText, url.value]])]),
-					createBaseVNode("label", null, [_cache[12] || (_cache[12] = createTextVNode("Модель ", -1)), withDirectives(createBaseVNode("input", {
+					createBaseVNode("label", null, [_cache[20] || (_cache[20] = createTextVNode("Модель ", -1)), withDirectives(createBaseVNode("input", {
 						"onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => model.value = $event),
 						class: "field",
 						maxlength: "160",
 						required: ""
 					}, null, 512), [[vModelText, model.value]])]),
-					createBaseVNode("label", null, [_cache[13] || (_cache[13] = createTextVNode("Ключ API ", -1)), withDirectives(createBaseVNode("input", {
-						"onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => key.value = $event),
+					createBaseVNode("label", null, [_cache[22] || (_cache[22] = createTextVNode("Режим API ", -1)), withDirectives(createBaseVNode("select", {
+						"onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => transport.value = $event),
+						class: "field"
+					}, [_cache[21] || (_cache[21] = createBaseVNode("option", { value: "chat" }, "Chat Completions", -1)), createBaseVNode("option", {
+						value: "realtime",
+						disabled: !state.value.version || state.value.version !== state.value.available_version
+					}, "OpenAI Realtime · экспериментальный", 8, _hoisted_7$9)], 512), [[vModelSelect, transport.value]])]),
+					createBaseVNode("label", null, [_cache[23] || (_cache[23] = createTextVNode("Ключ API ", -1)), withDirectives(createBaseVNode("input", {
+						"onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => key.value = $event),
 						type: "password",
 						class: "field",
 						autocomplete: "new-password",
 						placeholder: state.value.has_key ? "Ключ сохранён" : "Если требует провайдер"
-					}, null, 8, _hoisted_5$7), [[vModelText, key.value]])]),
-					createBaseVNode("label", _hoisted_6$7, [_cache[14] || (_cache[14] = createBaseVNode("span", null, "Разрешить пробный запуск", -1)), withDirectives(createBaseVNode("input", {
-						"onUpdate:modelValue": _cache[3] || (_cache[3] = ($event) => confirmed.value = $event),
+					}, null, 8, _hoisted_8$9), [[vModelText, key.value]])]),
+					createBaseVNode("details", null, [
+						_cache[29] || (_cache[29] = createBaseVNode("summary", null, "Локальные команды", -1)),
+						createBaseVNode("label", _hoisted_9$9, [_cache[24] || (_cache[24] = createBaseVNode("span", null, "Время и дата", -1)), withDirectives(createBaseVNode("input", {
+							"onUpdate:modelValue": _cache[4] || (_cache[4] = ($event) => time.value = $event),
+							type: "checkbox"
+						}, null, 512), [[vModelCheckbox, time.value]])]),
+						createBaseVNode("label", _hoisted_10$8, [_cache[25] || (_cache[25] = createBaseVNode("span", null, "Прогноз погоды", -1)), withDirectives(createBaseVNode("input", {
+							"onUpdate:modelValue": _cache[5] || (_cache[5] = ($event) => weather.value = $event),
+							type: "checkbox"
+						}, null, 512), [[vModelCheckbox, weather.value]])]),
+						weather.value ? (openBlock(), createElementBlock("div", _hoisted_11$8, [
+							createBaseVNode("label", null, [_cache[26] || (_cache[26] = createTextVNode("Город ", -1)), withDirectives(createBaseVNode("input", {
+								"onUpdate:modelValue": _cache[6] || (_cache[6] = ($event) => city.value = $event),
+								class: "field",
+								maxlength: "80"
+							}, null, 512), [[vModelText, city.value]])]),
+							createBaseVNode("label", null, [_cache[27] || (_cache[27] = createTextVNode("Широта ", -1)), withDirectives(createBaseVNode("input", {
+								"onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => lat.value = $event),
+								type: "number",
+								class: "field",
+								min: "-90",
+								max: "90",
+								step: "any",
+								required: ""
+							}, null, 512), [[
+								vModelText,
+								lat.value,
+								void 0,
+								{ number: true }
+							]])]),
+							createBaseVNode("label", null, [_cache[28] || (_cache[28] = createTextVNode("Долгота ", -1)), withDirectives(createBaseVNode("input", {
+								"onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => lon.value = $event),
+								type: "number",
+								class: "field",
+								min: "-180",
+								max: "180",
+								step: "any",
+								required: ""
+							}, null, 512), [[
+								vModelText,
+								lon.value,
+								void 0,
+								{ number: true }
+							]])])
+						])) : createCommentVNode("", true),
+						_cache[30] || (_cache[30] = createBaseVNode("p", { class: "hint" }, "Локальные команды требуют актуальной версии помощника. Для прогноза координаты передаются MET Norway.", -1))
+					]),
+					createBaseVNode("label", _hoisted_12$8, [_cache[31] || (_cache[31] = createBaseVNode("span", null, "Разрешить пробный запуск", -1)), withDirectives(createBaseVNode("input", {
+						"onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => confirmed.value = $event),
 						type: "checkbox"
 					}, null, 512), [[vModelCheckbox, confirmed.value]])]),
-					createBaseVNode("div", _hoisted_7$7, [
+					createBaseVNode("div", _hoisted_13$7, [
 						createBaseVNode("button", {
 							class: "btn",
 							disabled: unref(busy)
-						}, "Сохранить настройки", 8, _hoisted_8$7),
-						!state.value.installed ? (openBlock(), createElementBlock("button", {
+						}, "Сохранить настройки", 8, _hoisted_14$6),
+						!state.value.installed || state.value.available_version && state.value.version !== state.value.available_version ? (openBlock(), createElementBlock("button", {
 							key: 0,
 							type: "button",
 							class: "btn",
-							disabled: unref(busy),
-							onClick: _cache[4] || (_cache[4] = ($event) => send("install"))
-						}, "Установить программу", 8, _hoisted_9$7)) : createCommentVNode("", true),
+							disabled: unref(busy) || state.value.enabled,
+							onClick: _cache[10] || (_cache[10] = ($event) => send("install"))
+						}, toDisplayString(state.value.installed ? "Обновить помощника" : "Установить программу"), 9, _hoisted_15$5)) : createCommentVNode("", true),
 						state.value.enabled ? (openBlock(), createElementBlock("button", {
 							key: 1,
 							type: "button",
 							class: "btn",
 							disabled: unref(busy),
-							onClick: _cache[5] || (_cache[5] = ($event) => send("stop"))
-						}, "Остановить", 8, _hoisted_10$6)) : (openBlock(), createElementBlock("button", {
+							onClick: _cache[11] || (_cache[11] = ($event) => send("stop"))
+						}, "Остановить", 8, _hoisted_16$5)) : (openBlock(), createElementBlock("button", {
 							key: 2,
 							type: "button",
 							class: "btn primary",
 							disabled: unref(busy) || !state.value.installed || !state.value.confirmed,
-							onClick: _cache[6] || (_cache[6] = ($event) => send("start"))
-						}, "Запустить", 8, _hoisted_11$6))
+							onClick: _cache[12] || (_cache[12] = ($event) => send("start"))
+						}, "Запустить", 8, _hoisted_17$5))
 					])
 				], 32)) : createCommentVNode("", true),
 				state.value?.running ? (openBlock(), createElementBlock("form", {
 					key: 2,
 					class: "row",
-					onSubmit: _cache[9] || (_cache[9] = withModifiers(($event) => send("ask"), ["prevent"]))
-				}, [createBaseVNode("label", null, [_cache[15] || (_cache[15] = createTextVNode("Проверочный вопрос ", -1)), withDirectives(createBaseVNode("input", {
-					"onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => question.value = $event),
+					onSubmit: _cache[15] || (_cache[15] = withModifiers(($event) => send("ask"), ["prevent"]))
+				}, [createBaseVNode("label", null, [_cache[32] || (_cache[32] = createTextVNode("Проверочный вопрос ", -1)), withDirectives(createBaseVNode("input", {
+					"onUpdate:modelValue": _cache[14] || (_cache[14] = ($event) => question.value = $event),
 					class: "field",
 					maxlength: "1000",
 					required: ""
 				}, null, 512), [[vModelText, question.value]])]), createBaseVNode("button", {
 					class: "btn",
 					disabled: unref(busy) || !question.value.trim()
-				}, "Спросить", 8, _hoisted_12$6)], 32)) : createCommentVNode("", true),
+				}, "Спросить", 8, _hoisted_18$5)], 32)) : createCommentVNode("", true),
 				(openBlock(true), createElementBlock(Fragment, null, renderList(state.value?.history, (item, index) => {
 					return openBlock(), createElementBlock("div", {
 						key: index,
 						class: "set-item"
 					}, [createBaseVNode("div", null, [
 						createBaseVNode("b", null, toDisplayString(item.question), 1),
-						createBaseVNode("div", _hoisted_13$5, toDisplayString(unref(stamp)(item.at)), 1),
+						createBaseVNode("div", _hoisted_19$3, toDisplayString(unref(stamp)(item.at)), 1),
 						createBaseVNode("p", null, toDisplayString(item.error || item.answer), 1)
 					])]);
 				}), 128))
@@ -9720,25 +9910,25 @@ var OnDeviceAssistant_default = /* @__PURE__ */ defineComponent({
 	}
 });
 // src/pages/ChatgptPage.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$9 = { class: "page-head" };
-var _hoisted_2$8 = { class: "card" };
-var _hoisted_3$8 = {
+var _hoisted_1$12 = { class: "page-head" };
+var _hoisted_2$11 = { class: "card" };
+var _hoisted_3$11 = {
 	class: "hint",
 	id: "voice-note"
 };
-var _hoisted_4$7 = ["placeholder"];
-var _hoisted_5$6 = { class: "toggle" };
-var _hoisted_6$6 = { class: "row" };
-var _hoisted_7$6 = ["disabled"];
-var _hoisted_8$6 = ["disabled"];
-var _hoisted_9$6 = {
+var _hoisted_4$10 = ["placeholder"];
+var _hoisted_5$9 = { class: "toggle" };
+var _hoisted_6$9 = { class: "row" };
+var _hoisted_7$8 = ["disabled"];
+var _hoisted_8$8 = ["disabled"];
+var _hoisted_9$8 = {
 	class: "out",
 	id: "voice-result"
 };
-var _hoisted_10$5 = { class: "row" };
-var _hoisted_11$5 = ["disabled"];
-var _hoisted_12$5 = ["disabled"];
-var _hoisted_13$4 = ["disabled"];
+var _hoisted_10$7 = { class: "row" };
+var _hoisted_11$7 = ["disabled"];
+var _hoisted_12$7 = ["disabled"];
+var _hoisted_13$6 = ["disabled"];
 // src/pages/ChatgptPage.vue
 var ChatgptPage_default = /* @__PURE__ */ defineComponent({
 	__name: "ChatgptPage",
@@ -9783,10 +9973,10 @@ var ChatgptPage_default = /* @__PURE__ */ defineComponent({
 		});
 		return (_ctx, _cache) => {
 			return openBlock(), createElementBlock(Fragment, null, [
-				createBaseVNode("header", _hoisted_1$9, [createBaseVNode("h1", null, [createVNode(UiIcon_default, { name: "chat" }), _cache[7] || (_cache[7] = createTextVNode("ChatGPT", -1))])]),
-				createBaseVNode("section", _hoisted_2$8, [
+				createBaseVNode("header", _hoisted_1$12, [createBaseVNode("h1", null, [createVNode(UiIcon_default, { name: "chat" }), _cache[7] || (_cache[7] = createTextVNode("ChatGPT", -1))])]),
+				createBaseVNode("section", _hoisted_2$11, [
 					createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "chat" }), _cache[8] || (_cache[8] = createTextVNode("Голосовой мост на Linux-сервере", -1))]),
-					createBaseVNode("p", _hoisted_3$8, toDisplayString(note.value), 1),
+					createBaseVNode("p", _hoisted_3$11, toDisplayString(note.value), 1),
 					_cache[17] || (_cache[17] = createBaseVNode("p", { class: "hint" }, "Нужны настроенный голосовой сервис, агент DARKLS и защищённое соединение с сервером. Эта вкладка управляет сервисом; она не устанавливает аудиодрайверы и не выполняет вход в ChatGPT.", -1)),
 					createBaseVNode("label", null, [_cache[9] || (_cache[9] = createTextVNode("Адрес агента", -1)), withDirectives(createBaseVNode("input", {
 						class: "field",
@@ -9802,43 +9992,43 @@ var ChatgptPage_default = /* @__PURE__ */ defineComponent({
 						autocomplete: "new-password",
 						"onUpdate:modelValue": _cache[1] || (_cache[1] = ($event) => token.value = $event),
 						placeholder: hasToken.value ? "Сохранён. Оставь пустым, чтобы сохранить" : "Токен агента"
-					}, null, 8, _hoisted_4$7), [[vModelText, token.value]])]),
-					createBaseVNode("label", _hoisted_5$6, [_cache[11] || (_cache[11] = createBaseVNode("span", null, "Совместимость аудио с этой колонкой проверена вручную", -1)), withDirectives(createBaseVNode("input", {
+					}, null, 8, _hoisted_4$10), [[vModelText, token.value]])]),
+					createBaseVNode("label", _hoisted_5$9, [_cache[11] || (_cache[11] = createBaseVNode("span", null, "Совместимость аудио с этой колонкой проверена вручную", -1)), withDirectives(createBaseVNode("input", {
 						type: "checkbox",
 						id: "voice-compatible",
 						"onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => compatible.value = $event)
 					}, null, 512), [[vModelCheckbox, compatible.value]])]),
-					createBaseVNode("div", _hoisted_6$6, [createBaseVNode("button", {
+					createBaseVNode("div", _hoisted_6$9, [createBaseVNode("button", {
 						class: "btn",
 						id: "voice-save",
 						onClick: save,
 						disabled: unref(busy)
-					}, [createVNode(UiIcon_default, { name: "check" }), _cache[12] || (_cache[12] = createTextVNode("Сохранить", -1))], 8, _hoisted_7$6), createBaseVNode("button", {
+					}, [createVNode(UiIcon_default, { name: "check" }), _cache[12] || (_cache[12] = createTextVNode("Сохранить", -1))], 8, _hoisted_7$8), createBaseVNode("button", {
 						class: "btn",
 						id: "voice-status",
 						onClick: _cache[3] || (_cache[3] = ($event) => service("status")),
 						disabled: unref(busy)
-					}, [createVNode(UiIcon_default, { name: "info" }), _cache[13] || (_cache[13] = createTextVNode("Проверить связь", -1))], 8, _hoisted_8$6)]),
-					createBaseVNode("pre", _hoisted_9$6, toDisplayString(unref(message)), 1),
-					createBaseVNode("div", _hoisted_10$5, [
+					}, [createVNode(UiIcon_default, { name: "info" }), _cache[13] || (_cache[13] = createTextVNode("Проверить связь", -1))], 8, _hoisted_8$8)]),
+					createBaseVNode("pre", _hoisted_9$8, toDisplayString(unref(message)), 1),
+					createBaseVNode("div", _hoisted_10$7, [
 						createBaseVNode("button", {
 							class: "btn primary",
 							id: "voice-start",
 							onClick: _cache[4] || (_cache[4] = ($event) => service("start")),
 							disabled: unref(busy) || !compatible.value
-						}, [createVNode(UiIcon_default, { name: "play" }), _cache[14] || (_cache[14] = createTextVNode("Запустить", -1))], 8, _hoisted_11$5),
+						}, [createVNode(UiIcon_default, { name: "play" }), _cache[14] || (_cache[14] = createTextVNode("Запустить", -1))], 8, _hoisted_11$7),
 						createBaseVNode("button", {
 							class: "btn",
 							id: "voice-stop",
 							onClick: _cache[5] || (_cache[5] = ($event) => service("stop")),
 							disabled: unref(busy)
-						}, [createVNode(UiIcon_default, { name: "stop" }), _cache[15] || (_cache[15] = createTextVNode("Остановить", -1))], 8, _hoisted_12$5),
+						}, [createVNode(UiIcon_default, { name: "stop" }), _cache[15] || (_cache[15] = createTextVNode("Остановить", -1))], 8, _hoisted_12$7),
 						createBaseVNode("button", {
 							class: "btn",
 							id: "voice-restart",
 							onClick: _cache[6] || (_cache[6] = ($event) => service("restart")),
 							disabled: unref(busy) || !compatible.value
-						}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[16] || (_cache[16] = createTextVNode("Перезапустить", -1))], 8, _hoisted_13$4)
+						}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[16] || (_cache[16] = createTextVNode("Перезапустить", -1))], 8, _hoisted_13$6)
 					])
 				]),
 				createVNode(OnDeviceAssistant_default)
@@ -9847,18 +10037,18 @@ var ChatgptPage_default = /* @__PURE__ */ defineComponent({
 	}
 });
 // src/pages/BackupsPage.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$8 = { class: "page-head" };
-var _hoisted_2$7 = { class: "card" };
-var _hoisted_3$7 = {
+var _hoisted_1$11 = { class: "page-head" };
+var _hoisted_2$10 = { class: "card" };
+var _hoisted_3$10 = {
 	class: "out",
 	id: "backup-info"
 };
-var _hoisted_4$6 = { class: "toggle" };
-var _hoisted_5$5 = ["disabled"];
-var _hoisted_6$5 = { class: "card" };
-var _hoisted_7$5 = ["disabled"];
-var _hoisted_8$5 = ["href", "hidden"];
-var _hoisted_9$5 = {
+var _hoisted_4$9 = { class: "toggle" };
+var _hoisted_5$8 = ["disabled"];
+var _hoisted_6$8 = { class: "card" };
+var _hoisted_7$7 = ["disabled"];
+var _hoisted_8$7 = ["href", "hidden"];
+var _hoisted_9$7 = {
 	class: "out",
 	id: "backup-status"
 };
@@ -9905,12 +10095,12 @@ var BackupsPage_default = /* @__PURE__ */ defineComponent({
 		});
 		return (_ctx, _cache) => {
 			return openBlock(), createElementBlock(Fragment, null, [
-				createBaseVNode("header", _hoisted_1$8, [createBaseVNode("h1", null, [createVNode(UiIcon_default, { name: "archive" }), _cache[2] || (_cache[2] = createTextVNode("Резервные копии", -1))])]),
-				createBaseVNode("section", _hoisted_2$7, [
+				createBaseVNode("header", _hoisted_1$11, [createBaseVNode("h1", null, [createVNode(UiIcon_default, { name: "archive" }), _cache[2] || (_cache[2] = createTextVNode("Резервные копии", -1))])]),
+				createBaseVNode("section", _hoisted_2$10, [
 					createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "dl" }), _cache[3] || (_cache[3] = createTextVNode("Скачать копию на своё устройство", -1))]),
 					_cache[6] || (_cache[6] = createBaseVNode("p", { class: "hint" }, "Настройки панели и снимки конфигураций загрузки, автозапуска и ADB. Это не полный образ памяти. Пароль панели, сессии, runtime, музыка и приложения YAM не включаются.", -1)),
-					createBaseVNode("pre", _hoisted_3$7, toDisplayString(infoText.value), 1),
-					createBaseVNode("label", _hoisted_4$6, [_cache[4] || (_cache[4] = createBaseVNode("span", null, "Включить секреты: токен Яндекса, агента и бинарную конфигурацию колонки. Архив не зашифрован — храни его приватно.", -1)), withDirectives(createBaseVNode("input", {
+					createBaseVNode("pre", _hoisted_3$10, toDisplayString(infoText.value), 1),
+					createBaseVNode("label", _hoisted_4$9, [_cache[4] || (_cache[4] = createBaseVNode("span", null, "Включить секреты: токен Яндекса, агента и бинарную конфигурацию колонки. Архив не зашифрован — храни его приватно.", -1)), withDirectives(createBaseVNode("input", {
 						type: "checkbox",
 						id: "backup-secrets",
 						"onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => secrets.value = $event)
@@ -9920,9 +10110,9 @@ var BackupsPage_default = /* @__PURE__ */ defineComponent({
 						id: "backup-create",
 						onClick: create,
 						disabled: unref(busy)
-					}, [createVNode(UiIcon_default, { name: "dl" }), _cache[5] || (_cache[5] = createTextVNode("Создать и скачать", -1))], 8, _hoisted_5$5)
+					}, [createVNode(UiIcon_default, { name: "dl" }), _cache[5] || (_cache[5] = createTextVNode("Создать и скачать", -1))], 8, _hoisted_5$8)
 				]),
-				createBaseVNode("section", _hoisted_6$5, [
+				createBaseVNode("section", _hoisted_6$8, [
 					createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "undo" }), _cache[7] || (_cache[7] = createTextVNode("Восстановление настроек", -1))]),
 					_cache[9] || (_cache[9] = createBaseVNode("p", { class: "hint" }, "Восстанавливаются только настройки панели и включённые в копию токены. Снимки системных файлов предназначены для ручного восстановления; загрузка, root и прошивка автоматически не меняются. Перед восстановлением создаётся копия для отмены.", -1)),
 					createBaseVNode("input", {
@@ -9937,49 +10127,49 @@ var BackupsPage_default = /* @__PURE__ */ defineComponent({
 						id: "backup-restore",
 						onClick: restore,
 						disabled: unref(busy)
-					}, [createVNode(UiIcon_default, { name: "undo" }), _cache[8] || (_cache[8] = createTextVNode("Восстановить настройки", -1))], 8, _hoisted_7$5),
+					}, [createVNode(UiIcon_default, { name: "undo" }), _cache[8] || (_cache[8] = createTextVNode("Восстановить настройки", -1))], 8, _hoisted_7$7),
 					createBaseVNode("a", {
 						class: "btn",
 						id: "backup-undo",
 						href: undo.value,
 						hidden: !undo.value
-					}, "Скачать копию перед восстановлением", 8, _hoisted_8$5),
-					createBaseVNode("pre", _hoisted_9$5, toDisplayString(unref(message)), 1)
+					}, "Скачать копию перед восстановлением", 8, _hoisted_8$7),
+					createBaseVNode("pre", _hoisted_9$7, toDisplayString(unref(message)), 1)
 				])
 			], 64);
 		};
 	}
 });
 // src/pages/DiagnosticsPage.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$7 = { class: "page-head" };
-var _hoisted_2$6 = { class: "card" };
-var _hoisted_3$6 = { class: "row" };
-var _hoisted_4$5 = ["disabled"];
-var _hoisted_5$4 = ["disabled"];
-var _hoisted_6$4 = {
+var _hoisted_1$10 = { class: "page-head" };
+var _hoisted_2$9 = { class: "card" };
+var _hoisted_3$9 = { class: "row" };
+var _hoisted_4$8 = ["disabled"];
+var _hoisted_5$7 = ["disabled"];
+var _hoisted_6$7 = {
 	class: "hint",
 	id: "diagnostic-status"
 };
-var _hoisted_7$4 = {
+var _hoisted_7$6 = {
 	id: "diagnostic-checks",
 	"aria-live": "polite"
 };
-var _hoisted_8$4 = {
+var _hoisted_8$6 = {
 	class: "out",
 	id: "diagnostic-report"
 };
-var _hoisted_9$4 = { class: "card" };
-var _hoisted_10$4 = {
+var _hoisted_9$6 = { class: "card" };
+var _hoisted_10$6 = {
 	class: "out",
 	id: "device-json"
 };
-var _hoisted_11$4 = { class: "card" };
-var _hoisted_12$4 = { class: "card-head" };
-var _hoisted_13$3 = {
+var _hoisted_11$6 = { class: "card" };
+var _hoisted_12$6 = { class: "card-head" };
+var _hoisted_13$5 = {
 	class: "out",
 	id: "adb-log"
 };
-var _hoisted_14$3 = { class: "card" };
+var _hoisted_14$5 = { class: "card" };
 // src/pages/DiagnosticsPage.vue
 var DiagnosticsPage_default = /* @__PURE__ */ defineComponent({
 	__name: "DiagnosticsPage",
@@ -10003,26 +10193,26 @@ var DiagnosticsPage_default = /* @__PURE__ */ defineComponent({
 		}
 		return (_ctx, _cache) => {
 			return openBlock(), createElementBlock(Fragment, null, [
-				createBaseVNode("header", _hoisted_1$7, [createBaseVNode("div", null, [createBaseVNode("h1", null, [createVNode(UiIcon_default, { name: "shield" }), _cache[0] || (_cache[0] = createTextVNode("Диагностика", -1))]), _cache[1] || (_cache[1] = createBaseVNode("div", { class: "sub" }, "Локальное управление, службы и YAM CLI", -1))]), createBaseVNode("button", {
+				createBaseVNode("header", _hoisted_1$10, [createBaseVNode("div", null, [createBaseVNode("h1", null, [createVNode(UiIcon_default, { name: "shield" }), _cache[0] || (_cache[0] = createTextVNode("Диагностика", -1))]), _cache[1] || (_cache[1] = createBaseVNode("div", { class: "sub" }, "Локальное управление, службы и YAM CLI", -1))]), createBaseVNode("button", {
 					class: "btn",
 					"data-refresh": "",
 					onClick: refresh
 				}, [createVNode(UiIcon_default, { name: "refresh" }), _cache[2] || (_cache[2] = createTextVNode("Обновить", -1))])]),
-				createBaseVNode("section", _hoisted_2$6, [
+				createBaseVNode("section", _hoisted_2$9, [
 					createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "shield" }), _cache[3] || (_cache[3] = createTextVNode("Проверка колонки", -1))]),
-					createBaseVNode("div", _hoisted_3$6, [createBaseVNode("button", {
+					createBaseVNode("div", _hoisted_3$9, [createBaseVNode("button", {
 						class: "btn primary",
 						id: "diagnostic-run",
 						onClick: diagnose,
 						disabled: unref(busy)
-					}, [createVNode(UiIcon_default, { name: "shield" }), _cache[4] || (_cache[4] = createTextVNode("Проверить всё", -1))], 8, _hoisted_4$5), createBaseVNode("button", {
+					}, [createVNode(UiIcon_default, { name: "shield" }), _cache[4] || (_cache[4] = createTextVNode("Проверить всё", -1))], 8, _hoisted_4$8), createBaseVNode("button", {
 						class: "btn",
 						id: "diagnostic-save",
 						onClick: saveReport,
 						disabled: !report.value
-					}, [createVNode(UiIcon_default, { name: "dl" }), _cache[5] || (_cache[5] = createTextVNode("Скачать отчёт", -1))], 8, _hoisted_5$4)]),
-					createBaseVNode("p", _hoisted_6$4, toDisplayString(unref(message) || "Прошивка, память, сервисы и соединение с Яндексом. Проверка занимает до 10 секунд."), 1),
-					createBaseVNode("div", _hoisted_7$4, [(openBlock(true), createElementBlock(Fragment, null, renderList(report.value?.checks || [], (c, i) => {
+					}, [createVNode(UiIcon_default, { name: "dl" }), _cache[5] || (_cache[5] = createTextVNode("Скачать отчёт", -1))], 8, _hoisted_5$7)]),
+					createBaseVNode("p", _hoisted_6$7, toDisplayString(unref(message) || "Прошивка, память, сервисы и соединение с Яндексом. Проверка занимает до 10 секунд."), 1),
+					createBaseVNode("div", _hoisted_7$6, [(openBlock(true), createElementBlock(Fragment, null, renderList(report.value?.checks || [], (c, i) => {
 						return openBlock(), createBlock(CheckRow_default, {
 							key: i,
 							name: c.name,
@@ -10034,14 +10224,14 @@ var DiagnosticsPage_default = /* @__PURE__ */ defineComponent({
 							"status"
 						]);
 					}), 128))]),
-					createBaseVNode("details", null, [_cache[6] || (_cache[6] = createBaseVNode("summary", null, "Полный отчёт", -1)), createBaseVNode("pre", _hoisted_8$4, toDisplayString(report.value ? JSON.stringify(report.value, null, 2) : ""), 1)])
+					createBaseVNode("details", null, [_cache[6] || (_cache[6] = createBaseVNode("summary", null, "Полный отчёт", -1)), createBaseVNode("pre", _hoisted_8$6, toDisplayString(report.value ? JSON.stringify(report.value, null, 2) : ""), 1)])
 				]),
-				createBaseVNode("section", _hoisted_9$4, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "server" }), _cache[7] || (_cache[7] = createTextVNode("Профиль устройства", -1))]), createBaseVNode("pre", _hoisted_10$4, toDisplayString(unref(health).info ? JSON.stringify(unref(health).info.device, null, 2) : "Нет данных"), 1)]),
-				createBaseVNode("section", _hoisted_11$4, [createBaseVNode("div", _hoisted_12$4, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "log" }), _cache[8] || (_cache[8] = createTextVNode("Журнал ADB", -1))]), _cache[9] || (_cache[9] = createBaseVNode("a", {
+				createBaseVNode("section", _hoisted_9$6, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "server" }), _cache[7] || (_cache[7] = createTextVNode("Профиль устройства", -1))]), createBaseVNode("pre", _hoisted_10$6, toDisplayString(unref(health).info ? JSON.stringify(unref(health).info.device, null, 2) : "Нет данных"), 1)]),
+				createBaseVNode("section", _hoisted_11$6, [createBaseVNode("div", _hoisted_12$6, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "log" }), _cache[8] || (_cache[8] = createTextVNode("Журнал ADB", -1))]), _cache[9] || (_cache[9] = createBaseVNode("a", {
 					class: "btn sm",
 					href: "#logs"
-				}, "Логи Quasar", -1))]), createBaseVNode("pre", _hoisted_13$3, toDisplayString((unref(health).info?.adb?.log || []).map((e) => (/* @__PURE__ */ new Date(e.t * 1e3)).toLocaleTimeString("ru-RU") + " " + e.msg).join("\n")), 1)]),
-				createBaseVNode("section", _hoisted_14$3, [
+				}, "Логи Quasar", -1))]), createBaseVNode("pre", _hoisted_13$5, toDisplayString((unref(health).info?.adb?.log || []).map((e) => (/* @__PURE__ */ new Date(e.t * 1e3)).toLocaleTimeString("ru-RU") + " " + e.msg).join("\n")), 1)]),
+				createBaseVNode("section", _hoisted_14$5, [
 					createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "info" }), _cache[10] || (_cache[10] = createTextVNode("DARKLS Alice Panel 0.7.0", -1))]),
 					_cache[11] || (_cache[11] = createBaseVNode("p", { class: "hint" }, "Основа и оформление: dimap/yandex-station-web, MIT. Дополнительно: локальное управление, YAM v2, диагностика и исправление старого adbd.", -1)),
 					_cache[12] || (_cache[12] = createBaseVNode("p", { class: "hint" }, "Ограничения профиля Mini 3 Pro сохранены: неподдерживаемые операции не включаются принудительно.", -1)),
@@ -10055,14 +10245,14 @@ var DiagnosticsPage_default = /* @__PURE__ */ defineComponent({
 	}
 });
 // src/pages/ConnectionPage.vue
-var _sfc_main$8 = {};
-var _hoisted_1$6 = {
+var _sfc_main$7 = {};
+var _hoisted_1$9 = {
 	class: "card conn-card",
 	role: "status",
 	"aria-live": "polite"
 };
-function _sfc_render$8(_ctx, _cache) {
-	return openBlock(), createElementBlock("section", _hoisted_1$6, [..._cache[0] || (_cache[0] = [
+function _sfc_render$7(_ctx, _cache) {
+	return openBlock(), createElementBlock("section", _hoisted_1$9, [..._cache[0] || (_cache[0] = [
 		createStaticVNode("<div class=\"conn-ring\" id=\"cs-ring\"></div><h1 id=\"cs-title\">Подключение…</h1><p id=\"cs-text\"></p><div class=\"addr\" id=\"cs-addr\"></div><button class=\"btn\" id=\"cs-retry\" hidden>Повторить сейчас</button>", 5),
 		createBaseVNode("form", {
 			class: "login",
@@ -10104,586 +10294,594 @@ function _sfc_render$8(_ctx, _cache) {
 		})], -1)
 	])]);
 }
-var ConnectionPage_default = /*#__PURE__*/ _plugin_vue_export_helper_default(_sfc_main$8, [["render", _sfc_render$8]]);
+var ConnectionPage_default = /*#__PURE__*/ _plugin_vue_export_helper_default(_sfc_main$7, [["render", _sfc_render$7]]);
 // src/pages/OverviewPage.vue
-var _sfc_main$7 = {};
-function _sfc_render$7(_ctx, _cache) {
+var _sfc_main$6 = {};
+function _sfc_render$6(_ctx, _cache) {
 	return openBlock(), createElementBlock(Fragment, null, [
 		_cache[0] || (_cache[0] = createStaticVNode("<header class=\"page-head\"><div><h1>Обзор</h1><div class=\"sub\" id=\"ov-sub\">—</div><div class=\"upd-pill\" id=\"ov-update\" hidden><a href=\"#settings\"><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><use href=\"#i-up\"></use></svg><span id=\"ov-update-text\">Доступна новая версия панели</span></a><button type=\"button\" id=\"ov-update-hide\" aria-label=\"Скрыть до следующей версии\" title=\"Скрыть до следующей версии\">×</button></div></div><div class=\"actions\"><button class=\"btn\" id=\"ov-edit\" aria-pressed=\"false\"><svg width=\"18\" height=\"18\" aria-hidden=\"true\"><use href=\"#i-edit\"></use></svg><span>Настроить</span></button><button class=\"btn\" id=\"q-restart\"><svg width=\"18\" height=\"18\" aria-hidden=\"true\"><use href=\"#i-refresh\"></use></svg>Перезапустить Алису</button><button class=\"btn danger\" id=\"reboot\"><svg width=\"18\" height=\"18\" aria-hidden=\"true\"><use href=\"#i-power\"></use></svg>Перезагрузить</button></div></header><section class=\"card ov-editbar\" id=\"ov-editbar\" hidden><div class=\"card-head\"><h2>Настройка «Обзора»</h2><div class=\"actions\"><button class=\"btn sm\" id=\"ov-reset\">Виджеты по умолчанию</button><button class=\"btn sm primary\" id=\"ov-done\">Готово</button></div></div><div class=\"ov-opts\"><label class=\"set-item\"><div class=\"set-label\"><b>Визуализатор за 3D-моделью</b><small>Спектр из символов за моделью, пока колонка играет музыку (нужен вход в Яндекс)</small></div><div class=\"set-ctl\"><input type=\"checkbox\" class=\"switch\" id=\"set-viz\"></div></label><label class=\"set-item\"><div class=\"set-label\"><b>Фон в покое</b><small>Пока музыка не играет, символы за моделью медленно переливаются</small></div><div class=\"set-ctl\"><input type=\"checkbox\" class=\"switch\" id=\"set-viz-idle\"></div></label><label class=\"set-item\"><div class=\"set-label\"><b>Приватный режим</b><small>Серийный номер, Wi‑Fi, логин Яндекса, адреса и имена устройств — точками, в «Логах» скрыты Device ID, аккаунт и токены. Чтобы случайный скриншот ничего не выдал; одно значение можно открыть нажатием</small></div><div class=\"set-ctl\"><input type=\"checkbox\" class=\"switch\" id=\"set-private\"></div></label><div id=\"model-settings\" hidden></div><div class=\"set-item set-top\"><div class=\"set-label\"><b>Виджеты</b><small>Перетаскивайте за ⠿ или двигайте стрелками. Убранные можно вернуть отсюда. Тема, пароль, резервная копия — во вкладке <a href=\"#settings\">«Настройки»</a></small></div><div class=\"set-ctl\"><div class=\"chips\" id=\"ov-hidden-list\"></div></div></div></div></section><div class=\"wzone wz-top\" id=\"wz-top\"><section class=\"grid stats\" aria-label=\"Состояние\" data-widget=\"stats\" data-title=\"Состояние\"><div class=\"card stat\"><div class=\"label\">Температура</div><div class=\"value\"><b id=\"st-temp\">—</b><span>°C</span></div><div class=\"bar\"><i id=\"st-temp-bar\"></i></div><div class=\"meta\">процессор</div></div><div class=\"card stat\"><div class=\"label\">Память</div><div class=\"value\"><b id=\"st-mem\">—</b><span id=\"st-mem-u\">МБ</span></div><div class=\"bar\"><i id=\"st-mem-bar\"></i></div><div class=\"meta\" id=\"st-mem-n\">—</div></div><div class=\"card stat\"><div class=\"label\">Wi‑Fi</div><div class=\"value\"><b id=\"st-rssi\">—</b><span>дБм</span></div><div class=\"bar\"><i id=\"st-rssi-bar\"></i></div><div class=\"meta\" id=\"st-wifi-n\">—</div></div><div class=\"card stat\"><div class=\"label\">Аптайм</div><div class=\"value\"><b id=\"st-up\">—</b><span id=\"st-up-u\"></span></div><div class=\"bar\"><i id=\"st-load-bar\"></i></div><div class=\"meta\" id=\"st-load-n\">—</div></div></section></div>", 3)),
-		_cache[1] || (_cache[1] = createBaseVNode("div", { class: "cols" }, [createBaseVNode("div", {
-			class: "col wzone",
-			id: "wz-left"
-		}, [
+		_cache[1] || (_cache[1] = createBaseVNode("div", { class: "cols overview-columns" }, [
 			createBaseVNode("div", {
-				class: "model-view",
-				id: "model-view",
-				"data-widget": "model",
-				"data-title": "3D-модель",
-				role: "img",
-				"aria-label": "3D-модель колонки: дисплей и кольцо повторяют настоящие"
-			}, [createBaseVNode("canvas", {
-				id: "model-viz",
-				"aria-hidden": "true"
-			})]),
-			createBaseVNode("section", {
-				class: "card",
-				"data-widget": "volume",
-				"data-title": "Громкость"
+				class: "col wzone",
+				id: "wz-left"
 			}, [
-				createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", null, "Громкость")]),
-				createBaseVNode("div", { class: "vol-main" }, [createBaseVNode("div", {
-					class: "vol-big",
-					id: "vol-big"
-				}, "—"), createBaseVNode("div", null, [createBaseVNode("label", {
-					for: "vol-master",
-					class: "meta",
-					style: {
-						"font-weight": "600",
-						"color": "var(--text-2)"
-					}
-				}, "Динамик"), createBaseVNode("input", {
-					type: "range",
-					id: "vol-master",
-					min: "0",
-					max: "100",
-					step: "5"
-				})])]),
-				createBaseVNode("div", { class: "chips" }, [
-					createBaseVNode("button", {
-						class: "pill",
-						"data-level": "10"
-					}, "Тихо"),
-					createBaseVNode("button", {
-						class: "pill",
-						"data-level": "30"
-					}, "30"),
-					createBaseVNode("button", {
-						class: "pill",
-						"data-level": "50"
-					}, "50"),
-					createBaseVNode("button", {
-						class: "pill",
-						"data-level": "70"
-					}, "70")
-				]),
-				createBaseVNode("p", { class: "hint" }, "Шкала как на колонке: 0–100 с шагом 5. Если вы вошли в Яндекс, громкость ставит сама Алиса; иначе она пересчитывается по таблице Quasar и пишется прямо в микшер.")
-			]),
-			createBaseVNode("section", {
-				class: "card",
-				"data-widget": "light",
-				"data-title": "Подсветка"
-			}, [
-				createBaseVNode("h2", null, "Подсветка"),
-				createBaseVNode("div", { class: "ring-row" }, [createBaseVNode("div", {
-					class: "ring-preview",
-					id: "ring-preview"
-				}, [createBaseVNode("svg", {
-					viewBox: "-50 -50 100 100",
+				createBaseVNode("div", {
+					class: "model-view",
+					id: "model-view",
+					"data-widget": "model",
+					"data-title": "3D-модель",
+					role: "img",
+					"aria-label": "3D-модель колонки: дисплей и кольцо повторяют настоящие"
+				}, [createBaseVNode("canvas", {
+					id: "model-viz",
 					"aria-hidden": "true"
-				}, [createBaseVNode("path", {
-					"fill-rule": "evenodd",
-					d: "M0-46a46 46 0 1 1 0 92a46 46 0 1 1 0-92ZM0-25c3.5 0 5.6 2 7.6 5.5l13 22.5c2 3.5 2 6.4.3 9.3c-1.8 3-4.4 4.2-8.4 4.2h-25c-4 0-6.6-1.2-8.4-4.2c-1.7-2.9-1.7-5.8.3-9.3l13-22.5C-5.6-23-3.5-25 0-25Z"
-				})])]), createBaseVNode("div", {
-					class: "col",
-					style: { "gap": "10px" }
-				}, [createBaseVNode("div", {
-					class: "swatches",
-					id: "swatches"
+				})]),
+				createBaseVNode("section", {
+					class: "card",
+					"data-widget": "volume",
+					"data-title": "Громкость"
 				}, [
-					createBaseVNode("button", {
-						class: "sw",
-						style: { "--c": "#6C47FF" },
-						"data-hex": "#6C47FF",
-						"aria-label": "Фиолетовый"
-					}),
-					createBaseVNode("button", {
-						class: "sw",
-						style: { "--c": "#FF0000" },
-						"data-hex": "#FF0000",
-						"aria-label": "Красный"
-					}),
-					createBaseVNode("button", {
-						class: "sw",
-						style: { "--c": "#FF5A00" },
-						"data-hex": "#FF5A00",
-						"aria-label": "Оранжевый"
-					}),
-					createBaseVNode("button", {
-						class: "sw",
-						style: { "--c": "#00FF00" },
-						"data-hex": "#00FF00",
-						"aria-label": "Зелёный"
-					}),
-					createBaseVNode("button", {
-						class: "sw",
-						style: { "--c": "#0000FF" },
-						"data-hex": "#0000FF",
-						"aria-label": "Синий"
-					}),
-					createBaseVNode("button", {
-						class: "sw white",
-						style: { "--c": "#FFFFFF" },
-						"data-hex": "#FFFFFF",
-						"aria-label": "Белый"
-					}),
-					createBaseVNode("label", {
-						class: "sw-custom",
-						title: "Свой цвет"
-					}, [createBaseVNode("svg", {
-						width: "14",
-						height: "14",
-						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-plus" })]), createBaseVNode("input", {
-						type: "color",
-						id: "ring-color",
-						value: "#6c47ff",
-						"aria-label": "Свой цвет"
-					})])
-				]), createBaseVNode("div", { class: "row" }, [
-					createBaseVNode("button", {
-						class: "btn sm primary",
-						id: "ring-set"
-					}, "Включить"),
-					createBaseVNode("button", {
-						class: "btn sm",
-						id: "ring-off"
-					}, "Выключить"),
-					createBaseVNode("button", {
-						class: "btn sm",
-						id: "ring-reset",
-						title: "Отдать кольцо Алисе: погасить цвет и остановить анимации панели"
-					}, "Сбросить")
-				])])]),
-				createBaseVNode("div", { class: "card-head" }, [createBaseVNode("div", {
-					class: "seg",
-					id: "pat-kind",
-					role: "group",
-					"aria-label": "Анимации"
-				}, [createBaseVNode("button", {
-					"data-k": "ring",
-					class: "active"
-				}, "Кольцо"), createBaseVNode("button", { "data-k": "clock" }, "Часы")]), createBaseVNode("div", {
-					class: "row",
-					style: { "gap": "6px" }
-				}, [
-					createBaseVNode("label", {
-						for: "pat-sec",
-						class: "meta"
-					}, "длительность"),
-					createBaseVNode("input", {
-						type: "number",
-						id: "pat-sec",
-						class: "field mono",
-						value: "5",
-						min: "1",
-						max: "600",
+					createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", null, "Громкость")]),
+					createBaseVNode("div", { class: "vol-main" }, [createBaseVNode("div", {
+						class: "vol-big",
+						id: "vol-big"
+					}, "—"), createBaseVNode("div", null, [createBaseVNode("label", {
+						for: "vol-master",
+						class: "meta",
 						style: {
-							"width": "64px",
-							"min-height": "36px",
-							"padding": "0 8px"
+							"font-weight": "600",
+							"color": "var(--text-2)"
 						}
-					}),
-					createBaseVNode("span", { class: "meta" }, "с"),
-					createBaseVNode("button", {
-						class: "btn sm icon danger",
-						id: "pat-stop",
-						"aria-label": "Остановить анимации"
-					}, [createBaseVNode("svg", {
-						width: "14",
-						height: "14",
-						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-stop" })])])
-				])]),
-				createBaseVNode("div", {
-					class: "pat-list",
-					id: "patterns"
-				}),
-				createBaseVNode("p", { class: "hint" }, "Цвет пишется в /sys/class/leds — любая анимация Алисы его перезапишет. Анимации часов показываются и на предпросмотре дисплея.")
-			]),
-			createBaseVNode("section", {
-				class: "card",
-				"data-widget": "clock",
-				"data-title": "Дисплей часов"
-			}, [
-				createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", null, "Дисплей часов"), createBaseVNode("div", {
-					class: "row",
-					style: { "gap": "6px" }
-				}, [createBaseVNode("span", {
-					class: "badge",
-					id: "disp-badge",
-					hidden: ""
-				}), createBaseVNode("button", {
-					class: "btn sm",
-					id: "disp-stop"
-				}, "Вернуть часы")])]),
-				createBaseVNode("div", {
-					class: "display",
-					id: "clock-preview"
-				}),
-				createBaseVNode("div", {
-					class: "seg",
-					id: "disp-mode",
-					role: "group",
-					"aria-label": "Что показывать"
-				}, [
-					createBaseVNode("button", {
-						"data-m": "text",
-						class: "active"
-					}, "Текст"),
-					createBaseVNode("button", { "data-m": "date" }, "Дата"),
-					createBaseVNode("button", { "data-m": "temp" }, "Температура"),
-					createBaseVNode("button", { "data-m": "timer" }, "Таймер")
-				]),
-				createBaseVNode("div", {
-					class: "col",
-					id: "dm-text",
-					style: { "gap": "10px" }
-				}, [createBaseVNode("input", {
-					type: "text",
-					id: "clock-text",
-					class: "field mono",
-					maxlength: "10",
-					placeholder: "12:34",
-					"aria-label": "Текст на дисплее"
-				}), createBaseVNode("div", { class: "extras" }, [
-					createBaseVNode("label", null, [createBaseVNode("input", {
-						type: "checkbox",
-						id: "x-dh"
-					}), createTextVNode(" двоеточие ↑")]),
-					createBaseVNode("label", null, [createBaseVNode("input", {
-						type: "checkbox",
-						id: "x-dl"
-					}), createTextVNode(" двоеточие ↓")]),
-					createBaseVNode("label", null, [createBaseVNode("input", {
-						type: "checkbox",
-						id: "x-dm"
-					}), createTextVNode(" дефис")]),
-					createBaseVNode("label", null, [createBaseVNode("input", {
-						type: "checkbox",
-						id: "x-degree"
-					}), createTextVNode(" °")])
-				])]),
-				createBaseVNode("div", {
-					class: "row",
-					id: "dm-timer",
-					hidden: "",
-					style: { "gap": "8px" }
-				}, [createBaseVNode("input", {
-					type: "text",
-					id: "timer-val",
-					class: "field mono",
-					value: "05:00",
-					maxlength: "5",
-					"aria-label": "Время таймера, мм:сс",
-					style: { "width": "90px" }
-				}), createBaseVNode("div", { class: "chips" }, [
-					createBaseVNode("button", {
-						class: "pill",
-						"data-t": "60"
-					}, "1 мин"),
-					createBaseVNode("button", {
-						class: "pill",
-						"data-t": "300"
-					}, "5 мин"),
-					createBaseVNode("button", {
-						class: "pill",
-						"data-t": "600"
-					}, "10 мин"),
-					createBaseVNode("button", {
-						class: "pill",
-						"data-t": "1500"
-					}, "25 мин")
-				])]),
-				createBaseVNode("div", { class: "row" }, [
-					createBaseVNode("label", {
-						for: "clock-br",
-						style: { "min-width": "64px" }
-					}, "Яркость"),
-					createBaseVNode("input", {
+					}, "Динамик"), createBaseVNode("input", {
 						type: "range",
-						id: "clock-br",
-						min: "1",
-						max: "255",
-						value: "160",
-						style: {
-							"flex": "1",
-							"width": "auto"
-						}
-					}),
-					createBaseVNode("span", {
-						class: "mono meta",
-						id: "clock-br-v",
-						style: {
-							"min-width": "32px",
-							"text-align": "right"
-						}
-					}, "160")
+						id: "vol-master",
+						min: "0",
+						max: "100",
+						step: "5"
+					})])]),
+					createBaseVNode("div", { class: "chips" }, [
+						createBaseVNode("button", {
+							class: "pill",
+							"data-level": "10"
+						}, "Тихо"),
+						createBaseVNode("button", {
+							class: "pill",
+							"data-level": "30"
+						}, "30"),
+						createBaseVNode("button", {
+							class: "pill",
+							"data-level": "50"
+						}, "50"),
+						createBaseVNode("button", {
+							class: "pill",
+							"data-level": "70"
+						}, "70")
+					]),
+					createBaseVNode("p", { class: "hint" }, "Шкала как на колонке: 0–100 с шагом 5. Если вы вошли в Яндекс, громкость ставит сама Алиса; иначе она пересчитывается по таблице Quasar и пишется прямо в микшер.")
 				]),
-				createBaseVNode("div", {
-					class: "row",
-					style: { "gap": "8px" }
-				}, [createBaseVNode("button", {
-					class: "btn primary",
-					id: "disp-pin",
-					style: { "min-height": "42px" }
-				}, "Закрепить"), createBaseVNode("button", {
-					class: "btn",
-					id: "clock-set",
-					style: { "min-height": "42px" }
-				}, "Показать один раз")]),
-				createBaseVNode("p", {
-					class: "hint",
-					id: "disp-hint"
-				}, "Закреплённое держится, пока не нажать «Вернуть часы»: колонка сама перерисовывает дисплей, и Quasar его не затирает. «Один раз» — до смены минуты. По окончании таймера играет его штатный звонок.")
-			])
-		]), createBaseVNode("div", {
-			class: "col wzone",
-			id: "wz-right"
-		}, [
-			createBaseVNode("section", {
-				class: "card",
-				id: "music-card",
-				"data-widget": "music",
-				"data-title": "Сейчас играет"
-			}, [
-				createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", null, "Сейчас играет"), createBaseVNode("div", {
-					class: "row",
-					style: { "gap": "6px" }
-				}, [createBaseVNode("span", {
-					class: "meta",
-					id: "mu-account"
-				}), createBaseVNode("button", {
-					class: "btn sm ghost",
-					id: "mu-logout",
-					hidden: ""
-				}, "Выйти")])]),
-				createBaseVNode("div", {
-					id: "mu-login",
-					hidden: ""
+				createBaseVNode("section", {
+					class: "card",
+					"data-widget": "light",
+					"data-title": "Подсветка"
 				}, [
-					createBaseVNode("div", { class: "login-grid" }, [createBaseVNode("div", {
-						class: "qr",
-						id: "mu-qr"
-					}, [createBaseVNode("div", { class: "empty" }, "QR-код…")]), createBaseVNode("div", {
+					createBaseVNode("h2", null, "Подсветка"),
+					createBaseVNode("div", { class: "ring-row" }, [createBaseVNode("div", {
+						class: "ring-preview",
+						id: "ring-preview"
+					}, [createBaseVNode("svg", {
+						viewBox: "-50 -50 100 100",
+						"aria-hidden": "true"
+					}, [createBaseVNode("path", {
+						"fill-rule": "evenodd",
+						d: "M0-46a46 46 0 1 1 0 92a46 46 0 1 1 0-92ZM0-25c3.5 0 5.6 2 7.6 5.5l13 22.5c2 3.5 2 6.4.3 9.3c-1.8 3-4.4 4.2-8.4 4.2h-25c-4 0-6.6-1.2-8.4-4.2c-1.7-2.9-1.7-5.8.3-9.3l13-22.5C-5.6-23-3.5-25 0-25Z"
+					})])]), createBaseVNode("div", {
 						class: "col",
-						style: { "gap": "8px" }
+						style: { "gap": "10px" }
+					}, [createBaseVNode("div", {
+						class: "swatches",
+						id: "swatches"
 					}, [
-						createBaseVNode("b", null, "Войдите в Яндекс, чтобы видеть и переключать музыку"),
-						createBaseVNode("p", { class: "hint" }, "Отсканируйте QR-код камерой телефона, на котором выполнен вход в Яндекс, и подтвердите вход."),
-						createBaseVNode("span", {
-							class: "meta",
-							id: "mu-qr-status"
-						})
-					])]),
-					createBaseVNode("details", { style: { "margin-top": "12px" } }, [
-						createBaseVNode("summary", null, "Не получается? Войти через Яндекс"),
-						createBaseVNode("ol", {
-							class: "hint",
+						createBaseVNode("button", {
+							class: "sw",
+							style: { "--c": "#6C47FF" },
+							"data-hex": "#6C47FF",
+							"aria-label": "Фиолетовый"
+						}),
+						createBaseVNode("button", {
+							class: "sw",
+							style: { "--c": "#FF0000" },
+							"data-hex": "#FF0000",
+							"aria-label": "Красный"
+						}),
+						createBaseVNode("button", {
+							class: "sw",
+							style: { "--c": "#FF5A00" },
+							"data-hex": "#FF5A00",
+							"aria-label": "Оранжевый"
+						}),
+						createBaseVNode("button", {
+							class: "sw",
+							style: { "--c": "#00FF00" },
+							"data-hex": "#00FF00",
+							"aria-label": "Зелёный"
+						}),
+						createBaseVNode("button", {
+							class: "sw",
+							style: { "--c": "#0000FF" },
+							"data-hex": "#0000FF",
+							"aria-label": "Синий"
+						}),
+						createBaseVNode("button", {
+							class: "sw white",
+							style: { "--c": "#FFFFFF" },
+							"data-hex": "#FFFFFF",
+							"aria-label": "Белый"
+						}),
+						createBaseVNode("label", {
+							class: "sw-custom",
+							title: "Свой цвет"
+						}, [createBaseVNode("svg", {
+							width: "14",
+							height: "14",
+							"aria-hidden": "true"
+						}, [createBaseVNode("use", { href: "#i-plus" })]), createBaseVNode("input", {
+							type: "color",
+							id: "ring-color",
+							value: "#6c47ff",
+							"aria-label": "Свой цвет"
+						})])
+					]), createBaseVNode("div", { class: "row" }, [
+						createBaseVNode("button", {
+							class: "btn sm primary",
+							id: "ring-set"
+						}, "Включить"),
+						createBaseVNode("button", {
+							class: "btn sm",
+							id: "ring-off"
+						}, "Выключить"),
+						createBaseVNode("button", {
+							class: "btn sm",
+							id: "ring-reset",
+							title: "Отдать кольцо Алисе: погасить цвет и остановить анимации панели"
+						}, "Сбросить")
+					])])]),
+					createBaseVNode("div", { class: "card-head" }, [createBaseVNode("div", {
+						class: "seg",
+						id: "pat-kind",
+						role: "group",
+						"aria-label": "Анимации"
+					}, [createBaseVNode("button", {
+						"data-k": "ring",
+						class: "active"
+					}, "Кольцо"), createBaseVNode("button", { "data-k": "clock" }, "Часы")]), createBaseVNode("div", {
+						class: "row",
+						style: { "gap": "6px" }
+					}, [
+						createBaseVNode("label", {
+							for: "pat-sec",
+							class: "meta"
+						}, "длительность"),
+						createBaseVNode("input", {
+							type: "number",
+							id: "pat-sec",
+							class: "field mono",
+							value: "5",
+							min: "1",
+							max: "600",
 							style: {
-								"padding-left": "18px",
-								"margin": "8px 0"
+								"width": "64px",
+								"min-height": "36px",
+								"padding": "0 8px"
 							}
-						}, [createBaseVNode("li", null, [createBaseVNode("a", {
-							id: "mu-oauth",
-							target: "_blank",
-							rel: "noopener"
-						}, "Откройте страницу входа Яндекса"), createTextVNode(" и войдите.")]), createBaseVNode("li", null, "Скопируйте из адресной строки адрес страницы, куда вас перенаправит, и вставьте сюда.")]),
-						createBaseVNode("div", {
-							class: "row",
+						}),
+						createBaseVNode("span", { class: "meta" }, "с"),
+						createBaseVNode("button", {
+							class: "btn sm icon danger",
+							id: "pat-stop",
+							"aria-label": "Остановить анимации"
+						}, [createBaseVNode("svg", {
+							width: "14",
+							height: "14",
+							"aria-hidden": "true"
+						}, [createBaseVNode("use", { href: "#i-stop" })])])
+					])]),
+					createBaseVNode("div", {
+						class: "pat-list",
+						id: "patterns"
+					}),
+					createBaseVNode("p", { class: "hint" }, "Цвет пишется в /sys/class/leds — любая анимация Алисы его перезапишет. Анимации часов показываются и на предпросмотре дисплея.")
+				]),
+				createBaseVNode("section", {
+					class: "card",
+					"data-widget": "clock",
+					"data-title": "Дисплей часов"
+				}, [
+					createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", null, "Дисплей часов"), createBaseVNode("div", {
+						class: "row",
+						style: { "gap": "6px" }
+					}, [createBaseVNode("span", {
+						class: "badge",
+						id: "disp-badge",
+						hidden: ""
+					}), createBaseVNode("button", {
+						class: "btn sm",
+						id: "disp-stop"
+					}, "Вернуть часы")])]),
+					createBaseVNode("div", {
+						class: "display",
+						id: "clock-preview"
+					}),
+					createBaseVNode("div", {
+						class: "seg",
+						id: "disp-mode",
+						role: "group",
+						"aria-label": "Что показывать"
+					}, [
+						createBaseVNode("button", {
+							"data-m": "text",
+							class: "active"
+						}, "Текст"),
+						createBaseVNode("button", { "data-m": "date" }, "Дата"),
+						createBaseVNode("button", { "data-m": "temp" }, "Температура"),
+						createBaseVNode("button", { "data-m": "timer" }, "Таймер")
+					]),
+					createBaseVNode("div", {
+						class: "col",
+						id: "dm-text",
+						style: { "gap": "10px" }
+					}, [createBaseVNode("input", {
+						type: "text",
+						id: "clock-text",
+						class: "field mono",
+						maxlength: "10",
+						placeholder: "12:34",
+						"aria-label": "Текст на дисплее"
+					}), createBaseVNode("div", { class: "extras" }, [
+						createBaseVNode("label", null, [createBaseVNode("input", {
+							type: "checkbox",
+							id: "x-dh"
+						}), createTextVNode(" двоеточие ↑")]),
+						createBaseVNode("label", null, [createBaseVNode("input", {
+							type: "checkbox",
+							id: "x-dl"
+						}), createTextVNode(" двоеточие ↓")]),
+						createBaseVNode("label", null, [createBaseVNode("input", {
+							type: "checkbox",
+							id: "x-dm"
+						}), createTextVNode(" дефис")]),
+						createBaseVNode("label", null, [createBaseVNode("input", {
+							type: "checkbox",
+							id: "x-degree"
+						}), createTextVNode(" °")])
+					])]),
+					createBaseVNode("div", {
+						class: "row",
+						id: "dm-timer",
+						hidden: "",
+						style: { "gap": "8px" }
+					}, [createBaseVNode("input", {
+						type: "text",
+						id: "timer-val",
+						class: "field mono",
+						value: "05:00",
+						maxlength: "5",
+						"aria-label": "Время таймера, мм:сс",
+						style: { "width": "90px" }
+					}), createBaseVNode("div", { class: "chips" }, [
+						createBaseVNode("button", {
+							class: "pill",
+							"data-t": "60"
+						}, "1 мин"),
+						createBaseVNode("button", {
+							class: "pill",
+							"data-t": "300"
+						}, "5 мин"),
+						createBaseVNode("button", {
+							class: "pill",
+							"data-t": "600"
+						}, "10 мин"),
+						createBaseVNode("button", {
+							class: "pill",
+							"data-t": "1500"
+						}, "25 мин")
+					])]),
+					createBaseVNode("div", { class: "row" }, [
+						createBaseVNode("label", {
+							for: "clock-br",
+							style: { "min-width": "64px" }
+						}, "Яркость"),
+						createBaseVNode("input", {
+							type: "range",
+							id: "clock-br",
+							min: "1",
+							max: "255",
+							value: "160",
+							style: {
+								"flex": "1",
+								"width": "auto"
+							}
+						}),
+						createBaseVNode("span", {
+							class: "mono meta",
+							id: "clock-br-v",
+							style: {
+								"min-width": "32px",
+								"text-align": "right"
+							}
+						}, "160")
+					]),
+					createBaseVNode("div", {
+						class: "row",
+						style: { "gap": "8px" }
+					}, [createBaseVNode("button", {
+						class: "btn primary",
+						id: "disp-pin",
+						style: { "min-height": "42px" }
+					}, "Закрепить"), createBaseVNode("button", {
+						class: "btn",
+						id: "clock-set",
+						style: { "min-height": "42px" }
+					}, "Показать один раз")]),
+					createBaseVNode("p", {
+						class: "hint",
+						id: "disp-hint"
+					}, "Закреплённое держится, пока не нажать «Вернуть часы»: колонка сама перерисовывает дисплей, и Quasar его не затирает. «Один раз» — до смены минуты. По окончании таймера играет его штатный звонок.")
+				])
+			]),
+			createBaseVNode("div", {
+				class: "col wzone",
+				id: "wz-right"
+			}, [
+				createBaseVNode("section", {
+					class: "card",
+					id: "music-card",
+					"data-widget": "music",
+					"data-title": "Сейчас играет"
+				}, [
+					createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", null, "Сейчас играет"), createBaseVNode("div", {
+						class: "row",
+						style: { "gap": "6px" }
+					}, [createBaseVNode("span", {
+						class: "meta",
+						id: "mu-account"
+					}), createBaseVNode("button", {
+						class: "btn sm ghost",
+						id: "mu-logout",
+						hidden: ""
+					}, "Выйти")])]),
+					createBaseVNode("div", {
+						id: "mu-login",
+						hidden: ""
+					}, [
+						createBaseVNode("div", { class: "login-grid" }, [createBaseVNode("div", {
+							class: "qr",
+							id: "mu-qr"
+						}, [createBaseVNode("div", { class: "empty" }, "QR-код…")]), createBaseVNode("div", {
+							class: "col",
+							style: { "gap": "8px" }
+						}, [
+							createBaseVNode("b", null, "Войдите в Яндекс, чтобы видеть и переключать музыку"),
+							createBaseVNode("p", { class: "hint" }, "Отсканируйте QR-код камерой телефона, на котором выполнен вход в Яндекс, и подтвердите вход."),
+							createBaseVNode("span", {
+								class: "meta",
+								id: "mu-qr-status"
+							})
+						])]),
+						createBaseVNode("details", { style: { "margin-top": "12px" } }, [
+							createBaseVNode("summary", null, "Не получается? Войти через Яндекс"),
+							createBaseVNode("ol", {
+								class: "hint",
+								style: {
+									"padding-left": "18px",
+									"margin": "8px 0"
+								}
+							}, [createBaseVNode("li", null, [createBaseVNode("a", {
+								id: "mu-oauth",
+								target: "_blank",
+								rel: "noopener"
+							}, "Откройте страницу входа Яндекса"), createTextVNode(" и войдите.")]), createBaseVNode("li", null, "Скопируйте из адресной строки адрес страницы, куда вас перенаправит, и вставьте сюда.")]),
+							createBaseVNode("div", {
+								class: "row",
+								style: { "gap": "8px" }
+							}, [createBaseVNode("input", {
+								class: "field mono",
+								id: "mu-oauth-url",
+								placeholder: "https://music.yandex.ru/#access_token=…",
+								style: {
+									"flex": "1",
+									"min-width": "160px"
+								},
+								"aria-label": "Адрес после входа"
+							}), createBaseVNode("button", {
+								class: "btn sm primary",
+								id: "mu-oauth-go",
+								style: { "min-height": "42px" }
+							}, "Готово")])
+						]),
+						createBaseVNode("p", {
+							class: "hint",
+							style: { "margin-top": "10px" }
+						}, "Токен хранится только на этом компьютере (.yandex_auth.json рядом с server.py).")
+					]),
+					createBaseVNode("div", {
+						id: "mu-player",
+						hidden: "",
+						class: "col",
+						style: { "gap": "14px" }
+					}, [
+						createBaseVNode("div", { class: "mu-top" }, [createBaseVNode("a", {
+							class: "cover mu-cover",
+							href: "#player",
+							title: "Открыть плеер"
+						}, [createBaseVNode("svg", {
+							width: "40",
+							height: "40",
+							"aria-hidden": "true"
+						}, [createBaseVNode("use", { href: "#i-music" })])]), createBaseVNode("div", { class: "mu-side" }, [createBaseVNode("div", { class: "np-info" }, [createBaseVNode("div", { class: "np-title mu-title" }, "Ничего не играет"), createBaseVNode("div", { class: "np-artist mu-artist" })]), createBaseVNode("div", {
+							class: "controls",
+							"data-mu-controls": "full"
+						})])]),
+						createBaseVNode("div", { class: "progress" }, [
+							createBaseVNode("span", { class: "mu-pos" }, "0:00"),
+							createBaseVNode("input", {
+								type: "range",
+								class: "mu-seek",
+								min: "0",
+								max: "100",
+								value: "0",
+								step: "1",
+								"aria-label": "Позиция в треке"
+							}),
+							createBaseVNode("span", { class: "mu-dur" }, "0:00")
+						]),
+						createBaseVNode("div", { class: "mu-bt-note" }, [createBaseVNode("svg", {
+							width: "16",
+							height: "16",
+							"aria-hidden": "true"
+						}, [createBaseVNode("use", { href: "#i-bt" })]), createBaseVNode("span", null, [createBaseVNode("b", null, "Музыка с устройства по Bluetooth."), createTextVNode(" Лайки, очередь, перемешивание и перемотка доступны только на самом устройстве.")])]),
+						createBaseVNode("form", {
+							class: "row mu-ask-form",
 							style: { "gap": "8px" }
 						}, [createBaseVNode("input", {
-							class: "field mono",
-							id: "mu-oauth-url",
-							placeholder: "https://music.yandex.ru/#access_token=…",
+							class: "field",
+							name: "text",
+							placeholder: "Попросить Алису: «включи джаз»",
 							style: {
 								"flex": "1",
 								"min-width": "160px"
 							},
-							"aria-label": "Адрес после входа"
+							"aria-label": "Команда Алисе"
 						}), createBaseVNode("button", {
-							class: "btn sm primary",
-							id: "mu-oauth-go",
+							class: "btn sm",
 							style: { "min-height": "42px" }
-						}, "Готово")])
-					]),
-					createBaseVNode("p", {
-						class: "hint",
-						style: { "margin-top": "10px" }
-					}, "Токен хранится только на этом компьютере (.yandex_auth.json рядом с server.py).")
+						}, "Отправить")]),
+						createBaseVNode("p", {
+							class: "hint",
+							id: "mu-err",
+							hidden: ""
+						})
+					])
 				]),
-				createBaseVNode("div", {
-					id: "mu-player",
-					hidden: "",
-					class: "col",
-					style: { "gap": "14px" }
+				createBaseVNode("section", {
+					class: "card",
+					"data-widget": "sounds",
+					"data-title": "Звуки"
 				}, [
-					createBaseVNode("div", { class: "mu-top" }, [createBaseVNode("a", {
-						class: "cover mu-cover",
-						href: "#player",
-						title: "Открыть плеер"
+					createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", null, "Звуки"), createBaseVNode("button", {
+						class: "btn sm danger-soft",
+						id: "stop-sound"
 					}, [createBaseVNode("svg", {
-						width: "40",
-						height: "40",
+						width: "14",
+						height: "14",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-music" })])]), createBaseVNode("div", { class: "mu-side" }, [createBaseVNode("div", { class: "np-info" }, [createBaseVNode("div", { class: "np-title mu-title" }, "Ничего не играет"), createBaseVNode("div", { class: "np-artist mu-artist" })]), createBaseVNode("div", {
-						class: "controls",
-						"data-mu-controls": "full"
-					})])]),
-					createBaseVNode("div", { class: "progress" }, [
-						createBaseVNode("span", { class: "mu-pos" }, "0:00"),
-						createBaseVNode("input", {
-							type: "range",
-							class: "mu-seek",
-							min: "0",
-							max: "100",
-							value: "0",
-							step: "1",
-							"aria-label": "Позиция в треке"
-						}),
-						createBaseVNode("span", { class: "mu-dur" }, "0:00")
-					]),
-					createBaseVNode("div", { class: "mu-bt-note" }, [createBaseVNode("svg", {
+					}, [createBaseVNode("use", { href: "#i-stop" })]), createTextVNode("Стоп")])]),
+					createBaseVNode("div", {
+						class: "folders",
+						id: "snd-folders",
+						role: "group",
+						"aria-label": "Папка"
+					}),
+					createBaseVNode("label", { class: "search" }, [createBaseVNode("svg", {
 						width: "16",
 						height: "16",
 						"aria-hidden": "true"
-					}, [createBaseVNode("use", { href: "#i-bt" })]), createBaseVNode("span", null, [createBaseVNode("b", null, "Музыка с устройства по Bluetooth."), createTextVNode(" Лайки, очередь, перемешивание и перемотка доступны только на самом устройстве.")])]),
-					createBaseVNode("form", {
-						class: "row mu-ask-form",
-						style: { "gap": "8px" }
-					}, [createBaseVNode("input", {
-						class: "field",
-						name: "text",
-						placeholder: "Попросить Алису: «включи джаз»",
-						style: {
-							"flex": "1",
-							"min-width": "160px"
-						},
-						"aria-label": "Команда Алисе"
-					}), createBaseVNode("button", {
-						class: "btn sm",
-						style: { "min-height": "42px" }
-					}, "Отправить")]),
+					}, [createBaseVNode("use", { href: "#i-search" })]), createBaseVNode("input", {
+						type: "search",
+						id: "snd-filter",
+						placeholder: "Найти звук во всех папках",
+						"aria-label": "Найти звук"
+					})]),
+					createBaseVNode("div", {
+						class: "sound-list",
+						id: "sounds"
+					}, [createBaseVNode("div", { class: "empty" }, "Загрузка…")]),
+					createBaseVNode("button", {
+						class: "drop",
+						id: "drop"
+					}, "Перетащите аудиофайл сюда или нажмите, чтобы выбрать — он проиграется на колонке"),
+					createBaseVNode("input", {
+						type: "file",
+						id: "file",
+						accept: "audio/*",
+						hidden: ""
+					}),
 					createBaseVNode("p", {
 						class: "hint",
-						id: "mu-err",
-						hidden: ""
+						id: "ffmpeg-hint"
 					})
-				])
-			]),
-			createBaseVNode("section", {
-				class: "card",
-				"data-widget": "sounds",
-				"data-title": "Звуки"
-			}, [
-				createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", null, "Звуки"), createBaseVNode("button", {
-					class: "btn sm danger-soft",
-					id: "stop-sound"
-				}, [createBaseVNode("svg", {
-					width: "14",
-					height: "14",
-					"aria-hidden": "true"
-				}, [createBaseVNode("use", { href: "#i-stop" })]), createTextVNode("Стоп")])]),
-				createBaseVNode("div", {
-					class: "folders",
-					id: "snd-folders",
-					role: "group",
-					"aria-label": "Папка"
-				}),
-				createBaseVNode("label", { class: "search" }, [createBaseVNode("svg", {
-					width: "16",
-					height: "16",
-					"aria-hidden": "true"
-				}, [createBaseVNode("use", { href: "#i-search" })]), createBaseVNode("input", {
-					type: "search",
-					id: "snd-filter",
-					placeholder: "Найти звук во всех папках",
-					"aria-label": "Найти звук"
-				})]),
-				createBaseVNode("div", {
-					class: "sound-list",
-					id: "sounds"
-				}, [createBaseVNode("div", { class: "empty" }, "Загрузка…")]),
-				createBaseVNode("button", {
-					class: "drop",
-					id: "drop"
-				}, "Перетащите аудиофайл сюда или нажмите, чтобы выбрать — он проиграется на колонке"),
-				createBaseVNode("input", {
-					type: "file",
-					id: "file",
-					accept: "audio/*",
-					hidden: ""
-				}),
-				createBaseVNode("p", {
-					class: "hint",
-					id: "ffmpeg-hint"
-				})
-			]),
-			createBaseVNode("section", {
-				class: "card",
-				"data-widget": "bt",
-				"data-title": "Bluetooth"
-			}, [
-				createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", null, "Bluetooth"), createBaseVNode("span", {
-					class: "badge",
-					id: "bt-badge"
-				}, "—")]),
-				createBaseVNode("div", { class: "bt-pair" }, [
-					createBaseVNode("div", { class: "info" }, [createBaseVNode("b", { id: "bt-pair-text" }, "Скрыта"), createBaseVNode("span", {
-						class: "meta",
-						id: "bt-pair-hint"
-					}, "—")]),
-					createBaseVNode("span", {
-						class: "bt-left",
-						id: "bt-pair-left",
-						hidden: ""
-					}, "—"),
-					createBaseVNode("button", {
-						class: "btn sm",
-						id: "bt-pair-btn"
-					}, "Сделать видимой")
 				]),
-				createBaseVNode("div", {
-					class: "bt-list",
-					id: "bt-list"
-				}, [createBaseVNode("div", { class: "empty" }, "Загрузка…")]),
-				createBaseVNode("div", { class: "vol-bt" }, [
-					createBaseVNode("label", { for: "vol-bt" }, "Громкость"),
-					createBaseVNode("input", {
-						type: "range",
-						id: "vol-bt",
-						min: "0",
-						max: "255"
-					}),
-					createBaseVNode("span", { id: "vol-bt-v" }, "—")
-				])
+				createBaseVNode("section", {
+					class: "card",
+					"data-widget": "bt",
+					"data-title": "Bluetooth"
+				}, [
+					createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", null, "Bluetooth"), createBaseVNode("span", {
+						class: "badge",
+						id: "bt-badge"
+					}, "—")]),
+					createBaseVNode("div", { class: "bt-pair" }, [
+						createBaseVNode("div", { class: "info" }, [createBaseVNode("b", { id: "bt-pair-text" }, "Скрыта"), createBaseVNode("span", {
+							class: "meta",
+							id: "bt-pair-hint"
+						}, "—")]),
+						createBaseVNode("span", {
+							class: "bt-left",
+							id: "bt-pair-left",
+							hidden: ""
+						}, "—"),
+						createBaseVNode("button", {
+							class: "btn sm",
+							id: "bt-pair-btn"
+						}, "Сделать видимой")
+					]),
+					createBaseVNode("div", {
+						class: "bt-list",
+						id: "bt-list"
+					}, [createBaseVNode("div", { class: "empty" }, "Загрузка…")]),
+					createBaseVNode("div", { class: "vol-bt" }, [
+						createBaseVNode("label", { for: "vol-bt" }, "Громкость"),
+						createBaseVNode("input", {
+							type: "range",
+							id: "vol-bt",
+							min: "0",
+							max: "255"
+						}),
+						createBaseVNode("span", { id: "vol-bt-v" }, "—")
+					])
+				]),
+				createBaseVNode("section", {
+					class: "card",
+					"data-widget": "device",
+					"data-title": "Об устройстве"
+				}, [createBaseVNode("h2", null, "Об устройстве"), createBaseVNode("dl", {
+					class: "kv",
+					id: "dev-info"
+				}, [createBaseVNode("dt", null, "…"), createBaseVNode("dd")])])
 			]),
-			createBaseVNode("section", {
-				class: "card",
-				"data-widget": "device",
-				"data-title": "Об устройстве"
-			}, [createBaseVNode("h2", null, "Об устройстве"), createBaseVNode("dl", {
-				class: "kv",
-				id: "dev-info"
-			}, [createBaseVNode("dt", null, "…"), createBaseVNode("dd")])])
-		])], -1)),
+			createBaseVNode("div", {
+				class: "col wzone",
+				id: "wz-extra",
+				"aria-label": "Дополнительная зона виджетов"
+			})
+		], -1)),
 		_cache[2] || (_cache[2] = createBaseVNode("div", {
 			id: "wz-hidden",
 			hidden: ""
 		}, null, -1))
 	], 64);
 }
-var OverviewPage_default = /*#__PURE__*/ _plugin_vue_export_helper_default(_sfc_main$7, [["render", _sfc_render$7]]);
+var OverviewPage_default = /*#__PURE__*/ _plugin_vue_export_helper_default(_sfc_main$6, [["render", _sfc_render$6]]);
 // src/components/MediaCard.vue?vue&type=script&setup=true&lang.ts
-var _hoisted_1$5 = {
+var _hoisted_1$8 = {
 	class: "card",
 	id: "media-tools"
 };
-var _hoisted_2$5 = { class: "card-head" };
-var _hoisted_3$5 = {
+var _hoisted_2$8 = { class: "card-head" };
+var _hoisted_3$8 = {
 	class: "hint",
 	id: "media-status"
 };
-var _hoisted_4$4 = ["disabled"];
+var _hoisted_4$7 = ["disabled"];
 // src/components/MediaCard.vue
 var MediaCard_default = /* @__PURE__ */ defineComponent({
 	__name: "MediaCard",
@@ -10707,16 +10905,16 @@ var MediaCard_default = /* @__PURE__ */ defineComponent({
 		onMounted(load);
 		useEvents(load);
 		return (_ctx, _cache) => {
-			return openBlock(), createElementBlock("section", _hoisted_1$5, [
-				createBaseVNode("div", _hoisted_2$5, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "music" }), _cache[0] || (_cache[0] = createTextVNode("Аудиоформаты", -1))])]),
+			return openBlock(), createElementBlock("section", _hoisted_1$8, [
+				createBaseVNode("div", _hoisted_2$8, [createBaseVNode("h2", null, [createVNode(UiIcon_default, { name: "music" }), _cache[0] || (_cache[0] = createTextVNode("Аудиоформаты", -1))])]),
 				_cache[2] || (_cache[2] = createBaseVNode("p", { class: "hint" }, "FFmpeg работает прямо на колонке. Сжатая копия хранится в /data, рабочая — в оперативной памяти /tmp и восстанавливается после перезагрузки.", -1)),
-				createBaseVNode("p", _hoisted_3$5, toDisplayString(status.value), 1),
+				createBaseVNode("p", _hoisted_3$8, toDisplayString(status.value), 1),
 				withDirectives(createBaseVNode("button", {
 					class: "btn primary",
 					id: "media-install",
 					disabled: unref(busy),
 					onClick: install
-				}, [createVNode(UiIcon_default, { name: "dl" }), _cache[1] || (_cache[1] = createTextVNode("Установить аудио-FFmpeg", -1))], 8, _hoisted_4$4), [[vShow, !available.value]])
+				}, [createVNode(UiIcon_default, { name: "dl" }), _cache[1] || (_cache[1] = createTextVNode("Установить аудио-FFmpeg", -1))], 8, _hoisted_4$7), [[vShow, !available.value]])
 			]);
 		};
 	}
@@ -10793,6 +10991,12 @@ var SettingsPage_default = /* @__PURE__ */ defineComponent({
 								style: { "--c": "#52525B" },
 								"data-v": "#52525B",
 								"aria-label": "Графит"
+							}),
+							createBaseVNode("input", {
+								type: "color",
+								id: "set-custom-accent",
+								value: "#6c47ff",
+								"aria-label": "Свой цвет акцента"
 							})
 						])])]),
 						createBaseVNode("label", { class: "set-item" }, [createBaseVNode("div", { class: "set-label" }, [createBaseVNode("b", null, "Плеер внизу страницы"), createBaseVNode("small", null, "Мини-плеер на всех вкладках, кроме «Плеера». Появляется после входа в Яндекс")]), createBaseVNode("div", { class: "set-ctl" }, [createBaseVNode("input", {
@@ -11018,12 +11222,556 @@ var SettingsPage_default = /* @__PURE__ */ defineComponent({
 		};
 	}
 });
+// src/components/MusicLibrary.vue?vue&type=script&setup=true&lang.ts
+var _hoisted_1$7 = { class: "card pl-ya-only" };
+var _hoisted_2$7 = [
+	"aria-pressed",
+	"disabled",
+	"onClick"
+];
+var _hoisted_3$7 = { key: 0 };
+var _hoisted_4$6 = {
+	key: 1,
+	class: "row"
+};
+var _hoisted_5$6 = ["disabled"];
+var _hoisted_6$6 = { class: "tlist" };
+var _hoisted_7$5 = ["src"];
+var _hoisted_8$5 = {
+	key: 1,
+	class: "ph"
+};
+var _hoisted_9$5 = { class: "tt" };
+var _hoisted_10$5 = {
+	key: 2,
+	class: "td"
+};
+var _hoisted_11$5 = {
+	key: 0,
+	class: "empty"
+};
+var _hoisted_12$5 = {
+	key: 1,
+	class: "tlist"
+};
+var _hoisted_13$4 = ["disabled", "onClick"];
+var _hoisted_14$4 = ["src"];
+var _hoisted_15$4 = {
+	key: 1,
+	class: "ph"
+};
+var _hoisted_16$4 = { class: "tt" };
+var _hoisted_17$4 = {
+	key: 0,
+	class: "empty"
+};
+var _hoisted_18$4 = {
+	key: 2,
+	class: "hint",
+	role: "status"
+};
+// src/components/MusicLibrary.vue
+var MusicLibrary_default = /* @__PURE__ */ defineComponent({
+	__name: "MusicLibrary",
+	setup(__props) {
+		const tabs = [
+			{
+				id: "queue",
+				title: "Очередь"
+			},
+			{
+				id: "album",
+				title: "Альбом"
+			},
+			{
+				id: "similar",
+				title: "Похожие"
+			},
+			{
+				id: "liked",
+				title: "Избранное"
+			},
+			{
+				id: "playlists",
+				title: "Плейлисты"
+			}
+		];
+		const api = useApi();
+		const { busy, message, run } = useAction();
+		const view = /* @__PURE__ */ ref("queue");
+		const tracks = /* @__PURE__ */ ref([]);
+		const playlists = /* @__PURE__ */ ref([]);
+		const title = /* @__PURE__ */ ref("");
+		const activeAlbum = /* @__PURE__ */ ref("");
+		const navigation = /* @__PURE__ */ ref();
+		const format = (ms) => {
+			const seconds = Math.floor(ms / 1e3);
+			return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
+		};
+		function select(next) {
+			view.value = next;
+			message.value = "";
+			if (next === "queue" || next === "similar") return;
+			return run(async () => {
+				tracks.value = [];
+				playlists.value = [];
+				title.value = "";
+				activeAlbum.value = "";
+				if (next === "album") {
+					const id = navigation.value?.dataset.albumId;
+					if (!id) throw Error("У текущего трека нет доступного альбома");
+					const album = await api("/api/music/album?id=" + encodeURIComponent(id));
+					tracks.value = album.tracks;
+					title.value = album.title;
+					activeAlbum.value = id;
+				} else if (next === "liked") tracks.value = await api("/api/music/liked");
+				else playlists.value = await api("/api/music/playlists");
+				message.value = "";
+			});
+		}
+		function play(id, type) {
+			return run(async () => {
+				const result = await api("/api/music/play", {
+					id,
+					type
+				});
+				if (result.status && result.status !== "SUCCESS") throw Error("Колонка ответила: " + result.status);
+				message.value = "Команда отправлена";
+			});
+		}
+		return (_ctx, _cache) => {
+			return openBlock(), createElementBlock("section", _hoisted_1$7, [
+				createBaseVNode("div", {
+					id: "pl-list-tabs",
+					ref_key: "navigation",
+					ref: navigation,
+					class: "row music-tabs",
+					role: "group",
+					"aria-label": "Списки Яндекс Музыки"
+				}, [(openBlock(), createElementBlock(Fragment, null, renderList(tabs, (tab) => {
+					return createBaseVNode("button", {
+						key: tab.id,
+						type: "button",
+						class: normalizeClass(["btn sm", { primary: view.value === tab.id }]),
+						"aria-pressed": view.value === tab.id,
+						disabled: unref(busy),
+						onClick: ($event) => select(tab.id)
+					}, toDisplayString(tab.title), 11, _hoisted_2$7);
+				}), 64))], 512),
+				withDirectives(createBaseVNode("div", null, [
+					_cache[2] || (_cache[2] = createBaseVNode("div", { class: "card-head" }, [createBaseVNode("h2", { id: "pl-q-title" }, "Очередь"), createBaseVNode("span", {
+						class: "meta",
+						id: "pl-q-count"
+					})], -1)),
+					createBaseVNode("button", {
+						id: "pl-queue-play",
+						type: "button",
+						class: "btn sm",
+						hidden: "",
+						onClick: _cache[0] || (_cache[0] = ($event) => play(navigation.value?.dataset.queueId || "", navigation.value?.dataset.queueType || ""))
+					}, "Играть всё"),
+					_cache[3] || (_cache[3] = createBaseVNode("div", {
+						class: "tlist",
+						id: "pl-queue"
+					}, [createBaseVNode("div", { class: "empty" }, "—")], -1))
+				], 512), [[vShow, view.value === "queue"]]),
+				withDirectives(createBaseVNode("div", null, [..._cache[4] || (_cache[4] = [createBaseVNode("div", {
+					class: "tlist",
+					id: "pl-similar"
+				}, [createBaseVNode("div", { class: "empty" }, "—")], -1)])], 512), [[vShow, view.value === "similar"]]),
+				view.value === "album" || view.value === "liked" ? (openBlock(), createElementBlock(Fragment, { key: 0 }, [
+					title.value ? (openBlock(), createElementBlock("h3", _hoisted_3$7, toDisplayString(title.value), 1)) : createCommentVNode("", true),
+					tracks.value.length ? (openBlock(), createElementBlock("div", _hoisted_4$6, [view.value === "liked" || activeAlbum.value ? (openBlock(), createElementBlock("button", {
+						key: 0,
+						class: "btn sm",
+						disabled: unref(busy),
+						onClick: _cache[1] || (_cache[1] = ($event) => play(activeAlbum.value, view.value === "album" ? "album" : "likes"))
+					}, "Играть всё", 8, _hoisted_5$6)) : createCommentVNode("", true)])) : createCommentVNode("", true),
+					createBaseVNode("div", _hoisted_6$6, [(openBlock(true), createElementBlock(Fragment, null, renderList(tracks.value, (track, index) => {
+						return openBlock(), createElementBlock("div", {
+							key: index,
+							class: "trow"
+						}, [
+							track.cover ? (openBlock(), createElementBlock("img", {
+								key: 0,
+								src: track.cover,
+								alt: "",
+								loading: "lazy"
+							}, null, 8, _hoisted_7$5)) : (openBlock(), createElementBlock("span", _hoisted_8$5)),
+							createBaseVNode("span", _hoisted_9$5, [createBaseVNode("b", null, toDisplayString(track.title), 1), createBaseVNode("span", null, toDisplayString(track.artists), 1)]),
+							track.durationMs ? (openBlock(), createElementBlock("span", _hoisted_10$5, toDisplayString(format(track.durationMs)), 1)) : createCommentVNode("", true)
+						]);
+					}), 128)), !tracks.value.length && !unref(message) ? (openBlock(), createElementBlock("div", _hoisted_11$5, "Треков нет")) : createCommentVNode("", true)])
+				], 64)) : createCommentVNode("", true),
+				view.value === "playlists" ? (openBlock(), createElementBlock("div", _hoisted_12$5, [(openBlock(true), createElementBlock(Fragment, null, renderList(playlists.value, (playlist) => {
+					return openBlock(), createElementBlock("button", {
+						key: playlist.id,
+						class: "trow",
+						disabled: unref(busy),
+						onClick: ($event) => play(playlist.id, "playlist")
+					}, [playlist.cover ? (openBlock(), createElementBlock("img", {
+						key: 0,
+						src: playlist.cover,
+						alt: "",
+						loading: "lazy"
+					}, null, 8, _hoisted_14$4)) : (openBlock(), createElementBlock("span", _hoisted_15$4)), createBaseVNode("span", _hoisted_16$4, [createBaseVNode("b", null, toDisplayString(playlist.title), 1), createBaseVNode("span", null, "Треков: " + toDisplayString(playlist.tracks), 1)])], 8, _hoisted_13$4);
+				}), 128)), !playlists.value.length && !unref(message) ? (openBlock(), createElementBlock("div", _hoisted_17$4, "Плейлистов нет")) : createCommentVNode("", true)])) : createCommentVNode("", true),
+				unref(message) ? (openBlock(), createElementBlock("p", _hoisted_18$4, toDisplayString(unref(message)), 1)) : createCommentVNode("", true)
+			]);
+		};
+	}
+});
+// src/components/ZvukPlayer.vue?vue&type=script&setup=true&lang.ts
+var _hoisted_1$6 = { class: "card col" };
+var _hoisted_2$6 = {
+	key: 0,
+	class: "hint",
+	role: "status"
+};
+var _hoisted_3$6 = {
+	key: 1,
+	class: "hint"
+};
+var _hoisted_4$5 = { class: "row" };
+var _hoisted_5$5 = ["disabled"];
+var _hoisted_6$5 = ["disabled"];
+var _hoisted_7$4 = { class: "row music-tabs" };
+var _hoisted_8$4 = ["disabled"];
+var _hoisted_9$4 = ["disabled"];
+var _hoisted_10$4 = ["disabled"];
+var _hoisted_11$4 = { class: "row" };
+var _hoisted_12$4 = {
+	key: 0,
+	class: "col"
+};
+var _hoisted_13$3 = { class: "hint" };
+var _hoisted_14$3 = {
+	key: 0,
+	class: "progress"
+};
+var _hoisted_15$3 = ["max", "value"];
+var _hoisted_16$3 = { class: "row music-tabs" };
+var _hoisted_17$3 = ["disabled"];
+var _hoisted_18$3 = ["disabled"];
+var _hoisted_19$2 = ["disabled"];
+var _hoisted_20$2 = ["disabled"];
+var _hoisted_21$2 = ["disabled"];
+var _hoisted_22$1 = ["disabled"];
+var _hoisted_23$1 = ["disabled"];
+var _hoisted_24 = { class: "card-head" };
+var _hoisted_25 = ["disabled"];
+var _hoisted_26 = { class: "tlist" };
+var _hoisted_27 = ["disabled", "onClick"];
+var _hoisted_28 = ["src"];
+var _hoisted_29 = {
+	key: 1,
+	class: "ph"
+};
+var _hoisted_30 = { class: "tt" };
+var _hoisted_31 = {
+	key: 0,
+	class: "empty"
+};
+var _hoisted_32 = { key: 2 };
+var _hoisted_33 = { class: "tlist" };
+var _hoisted_34 = ["disabled", "onClick"];
+var _hoisted_35 = { class: "tt" };
+var endpoint$2 = "/api/zvuk";
+// src/components/ZvukPlayer.vue
+var ZvukPlayer_default = /* @__PURE__ */ defineComponent({
+	__name: "ZvukPlayer",
+	props: { active: { type: Boolean } },
+	setup(__props) {
+		const props = __props;
+		const api = useApi();
+		const { busy, message, run } = useAction();
+		const state = /* @__PURE__ */ ref();
+		const query = /* @__PURE__ */ ref("");
+		const token = /* @__PURE__ */ ref("");
+		const tracks = /* @__PURE__ */ ref([]);
+		const listTitle = /* @__PURE__ */ ref("");
+		const language = /* @__PURE__ */ ref("any");
+		const mood = /* @__PURE__ */ ref("");
+		const popular = /* @__PURE__ */ ref("");
+		const genre = /* @__PURE__ */ ref("");
+		const position = /* @__PURE__ */ ref();
+		const format = (seconds) => Math.floor(seconds / 60) + ":" + String(Math.floor(seconds % 60)).padStart(2, "0");
+		async function load() {
+			if (!props.active || route.active !== "player" || busy.value) return;
+			try {
+				state.value = await api(endpoint$2);
+			} catch (error) {
+				message.value = error.message;
+			}
+		}
+		usePolling(load, 1500, () => props.active && route.active === "player");
+		function action(name, fields = {}) {
+			return run(async () => {
+				const result = await api(endpoint$2, {
+					action: name,
+					...fields
+				});
+				if (typeof result.has_token === "boolean") state.value = result;
+				if (name === "token") token.value = "";
+				if (name === "logout") {
+					tracks.value = [];
+					listTitle.value = "";
+				}
+				if ([
+					"search",
+					"favorites",
+					"album",
+					"similar"
+				].includes(name)) {
+					tracks.value = result.tracks || [];
+					listTitle.value = {
+						search: "Результаты поиска",
+						favorites: "Избранное",
+						album: "Альбом",
+						similar: "Похожие треки"
+					}[name] || "";
+				}
+				message.value = "";
+			});
+		}
+		return (_ctx, _cache) => {
+			return openBlock(), createElementBlock("section", _hoisted_1$6, [
+				_cache[31] || (_cache[31] = createBaseVNode("h2", null, [createTextVNode("Сбер Звук "), createBaseVNode("span", { class: "badge" }, "Экспериментально")], -1)),
+				unref(message) ? (openBlock(), createElementBlock("p", _hoisted_2$6, toDisplayString(unref(message)), 1)) : createCommentVNode("", true),
+				!state.value && !unref(message) ? (openBlock(), createElementBlock("p", _hoisted_3$6, "Проверяем подключение…")) : createCommentVNode("", true),
+				state.value && !state.value.has_token ? (openBlock(), createElementBlock("form", {
+					key: 2,
+					class: "col",
+					onSubmit: _cache[1] || (_cache[1] = withModifiers(($event) => action("token", { token: token.value }), ["prevent"]))
+				}, [
+					_cache[22] || (_cache[22] = createBaseVNode("p", { class: "hint" }, "Войди в Сбер Звук и скопируй токен веб-сессии из профиля. Для воспроизведения нужно активное подключение колонки к Glagol.", -1)),
+					_cache[23] || (_cache[23] = createBaseVNode("div", { class: "row" }, [createBaseVNode("a", {
+						class: "btn sm",
+						href: "https://zvuk.com/api/tiny/profile",
+						target: "_blank",
+						rel: "noopener noreferrer"
+					}, "Открыть профиль Звука")], -1)),
+					createBaseVNode("label", null, [_cache[21] || (_cache[21] = createTextVNode("Токен сессии ", -1)), withDirectives(createBaseVNode("input", {
+						"onUpdate:modelValue": _cache[0] || (_cache[0] = ($event) => token.value = $event),
+						class: "field",
+						type: "password",
+						required: "",
+						autocomplete: "new-password"
+					}, null, 512), [[vModelText, token.value]])]),
+					createBaseVNode("div", _hoisted_4$5, [createBaseVNode("button", {
+						class: "btn primary",
+						disabled: unref(busy)
+					}, "Подключить", 8, _hoisted_5$5)])
+				], 32)) : createCommentVNode("", true),
+				state.value?.has_token ? (openBlock(), createElementBlock(Fragment, { key: 3 }, [
+					createBaseVNode("form", {
+						class: "row",
+						onSubmit: _cache[3] || (_cache[3] = withModifiers(($event) => action("search", { q: query.value.trim() }), ["prevent"]))
+					}, [withDirectives(createBaseVNode("input", {
+						"onUpdate:modelValue": _cache[2] || (_cache[2] = ($event) => query.value = $event),
+						class: "field",
+						"aria-label": "Поиск в Сбер Звуке",
+						placeholder: "Трек или исполнитель",
+						maxlength: "160",
+						required: ""
+					}, null, 512), [[vModelText, query.value]]), createBaseVNode("button", {
+						class: "btn",
+						disabled: unref(busy)
+					}, "Найти", 8, _hoisted_6$5)], 32),
+					createBaseVNode("div", _hoisted_7$4, [
+						createBaseVNode("button", {
+							class: "btn primary",
+							disabled: unref(busy),
+							onClick: _cache[4] || (_cache[4] = ($event) => action("flow", {
+								language: language.value,
+								mood: mood.value,
+								popular: popular.value,
+								genre: genre.value
+							}))
+						}, "Мой поток", 8, _hoisted_8$4),
+						createBaseVNode("button", {
+							class: "btn",
+							disabled: unref(busy),
+							onClick: _cache[5] || (_cache[5] = ($event) => action("favorites"))
+						}, "Избранное", 8, _hoisted_9$4),
+						createBaseVNode("button", {
+							class: "btn",
+							disabled: unref(busy),
+							onClick: _cache[6] || (_cache[6] = ($event) => action("logout"))
+						}, "Отключить аккаунт", 8, _hoisted_10$4)
+					]),
+					createBaseVNode("details", null, [_cache[29] || (_cache[29] = createBaseVNode("summary", null, "Настроить поток", -1)), createBaseVNode("div", _hoisted_11$4, [
+						createBaseVNode("label", null, [_cache[25] || (_cache[25] = createTextVNode("Язык ", -1)), withDirectives(createBaseVNode("select", {
+							"onUpdate:modelValue": _cache[7] || (_cache[7] = ($event) => language.value = $event),
+							class: "field"
+						}, [..._cache[24] || (_cache[24] = [
+							createBaseVNode("option", { value: "any" }, "Любой", -1),
+							createBaseVNode("option", { value: "ru" }, "Русский", -1),
+							createBaseVNode("option", { value: "en" }, "Английский", -1)
+						])], 512), [[vModelSelect, language.value]])]),
+						createBaseVNode("label", null, [_cache[26] || (_cache[26] = createTextVNode("Настроение ", -1)), withDirectives(createBaseVNode("input", {
+							"onUpdate:modelValue": _cache[8] || (_cache[8] = ($event) => mood.value = $event),
+							class: "field",
+							maxlength: "32"
+						}, null, 512), [[vModelText, mood.value]])]),
+						createBaseVNode("label", null, [_cache[27] || (_cache[27] = createTextVNode("Популярность ", -1)), withDirectives(createBaseVNode("input", {
+							"onUpdate:modelValue": _cache[9] || (_cache[9] = ($event) => popular.value = $event),
+							class: "field",
+							maxlength: "32"
+						}, null, 512), [[vModelText, popular.value]])]),
+						createBaseVNode("label", null, [_cache[28] || (_cache[28] = createTextVNode("Жанр ", -1)), withDirectives(createBaseVNode("input", {
+							"onUpdate:modelValue": _cache[10] || (_cache[10] = ($event) => genre.value = $event),
+							class: "field",
+							maxlength: "48"
+						}, null, 512), [[vModelText, genre.value]])])
+					])]),
+					state.value.track ? (openBlock(), createElementBlock("div", _hoisted_12$4, [
+						createBaseVNode("h3", null, toDisplayString(state.value.track.title), 1),
+						createBaseVNode("span", _hoisted_13$3, toDisplayString(state.value.track.artists), 1),
+						state.value.duration > 0 ? (openBlock(), createElementBlock("div", _hoisted_14$3, [
+							createBaseVNode("span", null, toDisplayString(format(position.value ?? state.value.position)), 1),
+							createBaseVNode("input", {
+								type: "range",
+								min: "0",
+								max: state.value.duration,
+								value: position.value ?? state.value.position,
+								"aria-label": "Позиция в треке Звука",
+								onInput: _cache[11] || (_cache[11] = ($event) => position.value = Number($event.target.value)),
+								onChange: _cache[12] || (_cache[12] = ($event) => action("seek", { position: Number($event.target.value) }).finally(() => position.value = void 0))
+							}, null, 40, _hoisted_15$3),
+							createBaseVNode("span", null, toDisplayString(format(state.value.duration)), 1)
+						])) : createCommentVNode("", true),
+						createBaseVNode("div", _hoisted_16$3, [
+							createBaseVNode("button", {
+								class: "btn",
+								disabled: unref(busy),
+								onClick: _cache[13] || (_cache[13] = ($event) => action("prev"))
+							}, "Назад", 8, _hoisted_17$3),
+							createBaseVNode("button", {
+								class: "btn primary",
+								disabled: unref(busy),
+								onClick: _cache[14] || (_cache[14] = ($event) => action(state.value.playing ? "pause" : "resume"))
+							}, toDisplayString(state.value.playing ? "Пауза" : "Продолжить"), 9, _hoisted_18$3),
+							createBaseVNode("button", {
+								class: "btn",
+								disabled: unref(busy),
+								onClick: _cache[15] || (_cache[15] = ($event) => action("next"))
+							}, "Дальше", 8, _hoisted_19$2),
+							createBaseVNode("button", {
+								class: "btn",
+								disabled: unref(busy),
+								onClick: _cache[16] || (_cache[16] = ($event) => action("stop"))
+							}, "Стоп", 8, _hoisted_20$2),
+							createBaseVNode("button", {
+								class: "btn",
+								disabled: unref(busy),
+								onClick: _cache[17] || (_cache[17] = ($event) => action("album"))
+							}, "Альбом", 8, _hoisted_21$2),
+							createBaseVNode("button", {
+								class: "btn",
+								disabled: unref(busy),
+								onClick: _cache[18] || (_cache[18] = ($event) => action("similar"))
+							}, "Похожие", 8, _hoisted_22$1),
+							createBaseVNode("button", {
+								class: "btn",
+								disabled: unref(busy),
+								onClick: _cache[19] || (_cache[19] = ($event) => action("like", {
+									track_id: state.value.track.id,
+									on: !state.value.track.liked
+								}))
+							}, toDisplayString(state.value.track.liked ? "Убрать лайк" : "Лайк"), 9, _hoisted_23$1)
+						])
+					])) : createCommentVNode("", true),
+					listTitle.value ? (openBlock(), createElementBlock(Fragment, { key: 1 }, [createBaseVNode("div", _hoisted_24, [createBaseVNode("h3", null, toDisplayString(listTitle.value), 1), tracks.value.length ? (openBlock(), createElementBlock("button", {
+						key: 0,
+						class: "btn sm",
+						disabled: unref(busy),
+						onClick: _cache[20] || (_cache[20] = ($event) => action("play-list", { tracks: tracks.value }))
+					}, "Играть всё", 8, _hoisted_25)) : createCommentVNode("", true)]), createBaseVNode("div", _hoisted_26, [(openBlock(true), createElementBlock(Fragment, null, renderList(tracks.value, (track) => {
+						return openBlock(), createElementBlock("button", {
+							key: track.id,
+							class: "trow",
+							disabled: unref(busy),
+							onClick: ($event) => action("play", { track })
+						}, [track.cover ? (openBlock(), createElementBlock("img", {
+							key: 0,
+							src: track.cover,
+							alt: "",
+							loading: "lazy"
+						}, null, 8, _hoisted_28)) : (openBlock(), createElementBlock("span", _hoisted_29)), createBaseVNode("span", _hoisted_30, [createBaseVNode("b", null, toDisplayString(track.title), 1), createBaseVNode("span", null, toDisplayString(track.artists), 1)])], 8, _hoisted_27);
+					}), 128)), !tracks.value.length ? (openBlock(), createElementBlock("div", _hoisted_31, "Треков нет")) : createCommentVNode("", true)])], 64)) : createCommentVNode("", true),
+					state.value.queue.length ? (openBlock(), createElementBlock("details", _hoisted_32, [_cache[30] || (_cache[30] = createBaseVNode("summary", null, "Очередь", -1)), createBaseVNode("div", _hoisted_33, [(openBlock(true), createElementBlock(Fragment, null, renderList(state.value.queue, (track, index) => {
+						return openBlock(), createElementBlock("button", {
+							key: index,
+							class: normalizeClass(["trow", { cur: state.value.index === index }]),
+							disabled: unref(busy),
+							onClick: ($event) => action("jump", { index })
+						}, [createBaseVNode("span", _hoisted_35, [createBaseVNode("b", null, toDisplayString(track.title), 1), createBaseVNode("span", null, toDisplayString(track.artists), 1)])], 10, _hoisted_34);
+					}), 128))])])) : createCommentVNode("", true)
+				], 64)) : createCommentVNode("", true)
+			]);
+		};
+	}
+});
+// src/pages/PlayerPage.vue?vue&type=script&setup=true&lang.ts
+var _hoisted_1$5 = {
+	class: "row music-tabs",
+	role: "group",
+	"aria-label": "Музыкальный сервис"
+};
+var _hoisted_2$5 = ["aria-pressed"];
+var _hoisted_3$5 = ["aria-pressed"];
+var _hoisted_4$4 = {
+	class: "col",
+	style: { "gap": "14px" }
+};
+var _hoisted_5$4 = {
+	id: "pl-body",
+	class: "col",
+	style: { "gap": "14px" }
+};
+var _hoisted_6$4 = { class: "cols pl-body-cols" };
 // src/pages/PlayerPage.vue
-var _sfc_main$6 = {};
-function _sfc_render$6(_ctx, _cache) {
-	return _cache[0] || (_cache[0] = createStaticVNode("<header class=\"page-head\"><div><h1>Плеер</h1><div class=\"sub\" id=\"pl-source\">—</div></div></header><section class=\"card\" id=\"pl-login\" hidden><h2>Нужен вход в Яндекс</h2><p class=\"hint\">Войдите в виджете «Сейчас играет» на «Обзоре» — по QR-коду или через страницу Яндекса.</p><div class=\"row\"><a class=\"btn primary\" href=\"#overview\">Перейти на «Обзор»</a></div></section><div id=\"pl-body\" class=\"col\" style=\"gap:14px;\"><section class=\"card pl-hero\"><div class=\"pl-cover mu-cover\"><svg width=\"64\" height=\"64\" aria-hidden=\"true\"><use href=\"#i-music\"></use></svg></div><div class=\"col pl-main\" style=\"gap:12px;\"><div class=\"pl-kicker\" id=\"pl-kind\">Трек</div><h2 class=\"pl-title mu-title\">Ничего не играет</h2><div class=\"pl-artist mu-artist\"></div><div class=\"pl-meta\" id=\"pl-meta\"></div><div class=\"progress\"><span class=\"mu-pos\">0:00</span><input type=\"range\" class=\"mu-seek\" min=\"0\" max=\"100\" value=\"0\" step=\"1\" aria-label=\"Позиция в треке\"><span class=\"mu-dur\">0:00</span></div><div class=\"controls pl-controls\" data-mu-controls=\"full\"></div><div class=\"mu-volrow\"><svg width=\"18\" height=\"18\" aria-hidden=\"true\"><use href=\"#i-vol\"></use></svg><input type=\"range\" class=\"mu-vol\" min=\"0\" max=\"100\" step=\"5\" aria-label=\"Громкость\"><span class=\"mono mu-vol-v\">—</span></div><form class=\"row mu-ask-form\" style=\"gap:8px;\"><input class=\"field\" name=\"text\" placeholder=\"Попросить Алису: «включи что-нибудь весёлое»\" style=\"flex:1;min-width:160px;\" aria-label=\"Команда Алисе\"><button class=\"btn sm\" style=\"min-height:42px;\">Отправить</button></form></div></section><div class=\"cols pl-body-cols\"><section class=\"card\"><div class=\"card-head\"><h2>Текст песни</h2><span class=\"meta\" id=\"pl-ly-meta\"></span></div><div class=\"lyrics\" id=\"pl-lyrics\"><div class=\"empty\">—</div></div><p class=\"hint\" id=\"pl-ly-src\" hidden></p></section><div class=\"col pl-ya-only\"><section class=\"card\"><div class=\"card-head\"><h2 id=\"pl-q-title\">Очередь</h2><span class=\"meta\" id=\"pl-q-count\"></span></div><div class=\"tlist\" id=\"pl-queue\"><div class=\"empty\">—</div></div></section><section class=\"card\"><h2>Похожие треки</h2><div class=\"tlist\" id=\"pl-similar\"><div class=\"empty\">—</div></div></section></div></div><section class=\"card pl-ya-only\" id=\"pl-artist-card\"><h2>Об исполнителе</h2><div id=\"pl-artist\"><div class=\"empty\">—</div></div></section><section class=\"card\"><details id=\"pl-raw-box\"><summary>Всё, что сообщает колонка</summary><dl class=\"kv\" id=\"pl-raw\" style=\"margin-top:10px;\"></dl></details></section></div>", 3));
-}
-var PlayerPage_default = /*#__PURE__*/ _plugin_vue_export_helper_default(_sfc_main$6, [["render", _sfc_render$6]]);
+var PlayerPage_default = /* @__PURE__ */ defineComponent({
+	__name: "PlayerPage",
+	setup(__props) {
+		const provider = /* @__PURE__ */ ref("yandex");
+		return (_ctx, _cache) => {
+			return openBlock(), createElementBlock(Fragment, null, [
+				_cache[6] || (_cache[6] = createBaseVNode("header", { class: "page-head" }, [createBaseVNode("div", null, [createBaseVNode("h1", null, "Плеер"), createBaseVNode("div", {
+					class: "sub",
+					id: "pl-source"
+				}, "—")])], -1)),
+				createBaseVNode("div", _hoisted_1$5, [createBaseVNode("button", {
+					class: normalizeClass(["btn", { primary: provider.value === "yandex" }]),
+					"aria-pressed": provider.value === "yandex",
+					onClick: _cache[0] || (_cache[0] = ($event) => provider.value = "yandex")
+				}, "Яндекс Музыка", 10, _hoisted_2$5), createBaseVNode("button", {
+					class: normalizeClass(["btn", { primary: provider.value === "zvuk" }]),
+					"aria-pressed": provider.value === "zvuk",
+					onClick: _cache[1] || (_cache[1] = ($event) => provider.value = "zvuk")
+				}, "Сбер Звук", 10, _hoisted_3$5)]),
+				withDirectives(createVNode(ZvukPlayer_default, { active: provider.value === "zvuk" }, null, 8, ["active"]), [[vShow, provider.value === "zvuk"]]),
+				withDirectives(createBaseVNode("div", _hoisted_4$4, [_cache[5] || (_cache[5] = createBaseVNode("section", {
+					class: "card",
+					id: "pl-login",
+					hidden: ""
+				}, [
+					createBaseVNode("h2", null, "Нужен вход в Яндекс"),
+					createBaseVNode("p", { class: "hint" }, "Войдите в виджете «Сейчас играет» на «Обзоре» — по QR-коду или через страницу Яндекса."),
+					createBaseVNode("div", { class: "row" }, [createBaseVNode("a", {
+						class: "btn primary",
+						href: "#overview"
+					}, "Перейти на «Обзор»")])
+				], -1)), createBaseVNode("div", _hoisted_5$4, [
+					_cache[3] || (_cache[3] = createStaticVNode("<section class=\"card pl-hero\"><div class=\"pl-cover mu-cover\"><svg width=\"64\" height=\"64\" aria-hidden=\"true\"><use href=\"#i-music\"></use></svg></div><div class=\"col pl-main\" style=\"gap:12px;\"><div class=\"pl-kicker\" id=\"pl-kind\">Трек</div><h2 class=\"pl-title mu-title\">Ничего не играет</h2><div class=\"pl-artist mu-artist\"></div><div class=\"pl-meta\" id=\"pl-meta\"></div><div class=\"progress\"><span class=\"mu-pos\">0:00</span><input type=\"range\" class=\"mu-seek\" min=\"0\" max=\"100\" value=\"0\" step=\"1\" aria-label=\"Позиция в треке\"><span class=\"mu-dur\">0:00</span></div><div class=\"controls pl-controls\" data-mu-controls=\"full\"></div><div class=\"mu-volrow\"><svg width=\"18\" height=\"18\" aria-hidden=\"true\"><use href=\"#i-vol\"></use></svg><input type=\"range\" class=\"mu-vol\" min=\"0\" max=\"100\" step=\"5\" aria-label=\"Громкость\"><span class=\"mono mu-vol-v\">—</span></div><form class=\"row mu-ask-form\" style=\"gap:8px;\"><input class=\"field\" name=\"text\" placeholder=\"Попросить Алису: «включи что-нибудь весёлое»\" style=\"flex:1;min-width:160px;\" aria-label=\"Команда Алисе\"><button class=\"btn sm\" style=\"min-height:42px;\">Отправить</button></form></div></section>", 1)),
+					createBaseVNode("div", _hoisted_6$4, [_cache[2] || (_cache[2] = createStaticVNode("<section class=\"card\"><div class=\"card-head\"><h2>Текст песни</h2><span class=\"meta\" id=\"pl-ly-meta\"></span></div><div class=\"lyrics\" id=\"pl-lyrics\"><div class=\"empty\">—</div></div><p class=\"hint\" id=\"pl-ly-src\" hidden></p></section>", 1)), createVNode(MusicLibrary_default)]),
+					_cache[4] || (_cache[4] = createStaticVNode("<section class=\"card pl-ya-only\" id=\"pl-artist-card\"><h2>Об исполнителе</h2><div id=\"pl-artist\"><div class=\"empty\">—</div></div></section><section class=\"card\"><details id=\"pl-raw-box\"><summary>Всё, что сообщает колонка</summary><dl class=\"kv\" id=\"pl-raw\" style=\"margin-top:10px;\"></dl></details></section>", 2))
+				])], 512), [[vShow, provider.value === "yandex"]])
+			], 64);
+		};
+	}
+});
 // src/pages/AlarmPage.vue
 var _sfc_main$5 = {};
 function _sfc_render$5(_ctx, _cache) {

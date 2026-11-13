@@ -1,5 +1,18 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import MusicLibrary from '../components/MusicLibrary.vue'
+import ZvukPlayer from '../components/ZvukPlayer.vue'
+const provider = ref<'yandex'|'zvuk'>('yandex')
+</script>
+
 <template>
     <header class="page-head"><div><h1>Плеер</h1><div class="sub" id="pl-source">—</div></div></header>
+    <div class="row music-tabs" role="group" aria-label="Музыкальный сервис">
+      <button class="btn" :class="{primary:provider==='yandex'}" :aria-pressed="provider==='yandex'" @click="provider='yandex'">Яндекс Музыка</button>
+      <button class="btn" :class="{primary:provider==='zvuk'}" :aria-pressed="provider==='zvuk'" @click="provider='zvuk'">Сбер Звук</button>
+    </div>
+    <ZvukPlayer v-show="provider==='zvuk'" :active="provider==='zvuk'"/>
+    <div v-show="provider==='yandex'" class="col" style="gap:14px">
     <section class="card" id="pl-login" hidden>
       <h2>Нужен вход в Яндекс</h2>
       <p class="hint">Войдите в виджете «Сейчас играет» на «Обзоре» — по QR-коду или через страницу Яндекса.</p>
@@ -29,16 +42,7 @@
           <div class="lyrics" id="pl-lyrics"><div class="empty">—</div></div>
           <p class="hint" id="pl-ly-src" hidden></p>
         </section>
-        <div class="col pl-ya-only">
-          <section class="card">
-            <div class="card-head"><h2 id="pl-q-title">Очередь</h2><span class="meta" id="pl-q-count"></span></div>
-            <div class="tlist" id="pl-queue"><div class="empty">—</div></div>
-          </section>
-          <section class="card">
-            <h2>Похожие треки</h2>
-            <div class="tlist" id="pl-similar"><div class="empty">—</div></div>
-          </section>
-        </div>
+        <MusicLibrary/>
       </div>
       <section class="card pl-ya-only" id="pl-artist-card">
         <h2>Об исполнителе</h2>
@@ -47,5 +51,6 @@
       <section class="card">
         <details id="pl-raw-box"><summary>Всё, что сообщает колонка</summary><dl class="kv" id="pl-raw" style="margin-top:10px"></dl></details>
       </section>
+    </div>
     </div>
   </template>

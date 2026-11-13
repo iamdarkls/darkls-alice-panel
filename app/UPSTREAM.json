@@ -6,7 +6,13 @@
     "commit": "7df9f78e3a0fde1dcdee92e6b2f43293faf17d8a",
     "declared_version": "0.1.4",
     "license": "MIT",
-    "notice": "Full upstream Python, static assets, device scripts and model restrictions retained."
+    "notice": "Full upstream Python, static assets, device scripts and model restrictions retained.",
+    "integrated_release": {
+      "repository": "https://github.com/dimap/yapanel-web",
+      "tag": "v0.3.1",
+      "commit": "553e9b5081fa0a9e1095ca8befe30580977959f3",
+      "license": "MIT"
+    }
   },
   "yam_api": {
     "repository": "https://github.com/nyakokitsu/yam",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Веб-панель для Яндекс Станций (Лайт 2, Мини 3, Мини 3 Про, Станция 2) с root-доступом по adb.
 
-Запуск:  python3 server.py [--device 192.168.1.50] [--host 127.0.0.1] [--port 8765] [--open]
+Запуск:  python3 server.py [--device 192.0.2.50] [--host 127.0.0.1] [--port 8765] [--open]
 Зависимости: Python 3.9+ (только стандартная библиотека) и adb; ffmpeg и openssl — по желанию.
 Все параметры можно задать и переменными окружения (см. --help), так панель запускается в Docker.
 """
@@ -38,6 +38,9 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import access
 import glagol
+import music_library
+import zvuk
+import zvuk_player
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
@@ -474,7 +477,7 @@ class Connection:
             return True
         try:
             p = subprocess.run(self.adb._base() + ["shell", "echo ok"], capture_output=True, timeout=4)
-            return p.stdout.strip() == b"ok"
+            return p.returncode == 0 and p.stdout.strip() == b"ok"
         except subprocess.TimeoutExpired:
             return False
 
@@ -488,6 +491,7 @@ class Connection:
 
     def run(self):
         network = bool(self.adb.serial and ":" in self.adb.serial)
+        failed_probes = 0
         while True:
             state, err = self._adb_state()
             if state == "device" and network and not self._reachable():
@@ -495,9 +499,14 @@ class Connection:
                 self._drop()
                 state = ""
             elif state == "device" and not self._alive():
+                failed_probes += 1
+                if failed_probes < 3:
+                    self._sleep(1)
+                    continue
                 self.note("adb числит колонку подключённой, но она не отвечает — сбрасываем соединение", "warn")
                 self._drop()
                 state = ""
+            failed_probes = 0
             if state == "device":
                 if not self.online:
                     self.note(f"Подключено: {self.adb.serial or 'устройство по умолчанию'}")
@@ -903,7 +912,7 @@ def find_adb():
 
 
 def normalize_device(dev):
-    """«192.168.1.50» → «192.168.1.50:5555»; серийники USB и host:port — как есть."""
+    """«192.0.2.50» → «192.0.2.50:5555»; серийники USB и host:port — как есть."""
     dev = (dev or "").strip()
     if dev and ":" not in dev and re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}|[\w-]+\.(local|lan|home)", dev):
         dev += ":5555"
@@ -919,6 +928,8 @@ class Panel:
         self.adb = adb
         self._version = None
         self.ffmpeg = shutil.which("ffmpeg")
+        self._zvuk = None
+        self._zvuk_init = threading.Lock()
 
     def _configure_glagol(self, device_id):
         # Glagol использует тип устройства из прошивки, а не профиль LED/часов панели.
@@ -1337,7 +1348,7 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
 
     def boot_sound_install(self, filename, body):
         if not self.ffmpeg:
-            raise AdbError("для смены звука нужен ffmpeg на компьютере")
+            raise AdbError("Для смены звука нужен FFmpeg в среде панели")
         if not self.boot_status()["sound_supported"]:
             raise AdbError(f"на этой прошивке нет {SOUND_TARGET}")
         # Тот же формат, что у оригинала: MP3 44,1 кГц стерео.
@@ -1512,16 +1523,23 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
         files, manifest = {}, None
         try:
             with tarfile.open(fileobj=io.BytesIO(body), mode="r:gz") as tar:
-                for m in tar.getmembers():
-                    if not m.isfile():
-                        continue
-                    if m.name == "manifest.json":
+                total, seen = 0, set()
+                for index, m in enumerate(tar):
+                    if index >= 100 or not m.isfile() or m.name in seen or m.size < 0:
+                        raise ValueError("небезопасная структура копии")
+                    total += m.size
+                    if total > self.BACKUP_LIMIT:
+                        raise ValueError("распакованная копия слишком большая")
+                    seen.add(m.name)
+                    if m.name == "manifest.json" and m.size <= 65536:
                         manifest = json.loads(tar.extractfile(m).read())
                     elif m.name.startswith("webpanel/") and self.BACKUP_FILES.fullmatch(m.name[9:]):
                         files[m.name[9:]] = tar.extractfile(m).read()
+                    else:
+                        raise ValueError("неподдерживаемый файл в копии")
         except (tarfile.TarError, OSError, ValueError, EOFError) as e:
             raise AdbError(f"это не резервная копия панели: {e}")
-        if not manifest or manifest.get("format") != 1:
+        if not isinstance(manifest, dict) or manifest.get("format") != 1:
             raise AdbError("это не резервная копия панели (нет manifest.json)")
         report = []
         self.footprint_reset()
@@ -1611,7 +1629,7 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
 
     def _alarm_wav(self, data, dev_name):
         if not self.ffmpeg:
-            raise AdbError("для звуков будильника нужен ffmpeg на компьютере")
+            raise AdbError("Для звуков будильника нужен FFmpeg в среде панели")
         with tempfile.TemporaryDirectory() as td:
             dst = Path(td) / "a.wav"
             # не длиннее 5 минут: звук всё равно играет по кругу, а место в /data не бесконечное
@@ -1670,15 +1688,21 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
                                    clean(a.get("sound_name"), 60), str(vol), str(ramp), str(dur), str(snz),
                                    clean(a.get("label"), 40)]))
         # не ls: у busybox он раскрашивает имена даже в не-терминал
-        have = set(self.adb.shell(f"mkdir -p {ALARM_DIR}; for f in {ALARM_DIR}/*; do echo \"${{f##*/}}\"; done",
+        have = set(self.adb.shell(f"for f in {ALARM_DIR}/*; do echo \"${{f##*/}}\"; done",
                                   check=False)[0].split())
         # запасной звук — штатный звук таймера: на него переключаемся, если чего-то не хватает
-        if "default.wav" not in have:
-            self._alarm_wav(self.adb.read_bytes(f"{SOUNDS_DIR}/{ALARM_DEFAULT_SOUND}"), "default.wav")
-        for dev, path in sys_needed.items():
-            if dev not in have:
-                if path not in self.sounds():
-                    raise AdbError(f"нет такого звука: {path}")
+        missing = [(dev, path) for dev, path in sys_needed.items() if dev not in have]
+        if "default.wav" not in have or missing:
+            if not self.ffmpeg:
+                raise AdbError("Для подготовки звуков будильника нужен FFmpeg в среде панели")
+            if missing:
+                available = self.sounds()
+                for _, path in missing:
+                    if path not in available:
+                        raise AdbError(f"нет такого звука: {path}")
+            if "default.wav" not in have:
+                missing.insert(0, ("default.wav", ALARM_DEFAULT_SOUND))
+            for dev, path in missing:
                 self._alarm_wav(self.adb.read_bytes(f"{SOUNDS_DIR}/{path}"), dev)
         stale = [f for f in have if re.fullmatch(r"[su]_[0-9a-f]{10}\.wav", f) and f not in used]
         tz_name, tz_data = self._pc_tz()
@@ -1767,6 +1791,51 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
     # ---------- музыка: аккаунт Яндекса и Glagol ----------
     _bt_pos = None   # (позиция, с; когда измерена; название трека)
 
+    def zvuk_player(self):
+        with self._zvuk_init:
+            if self._zvuk is None:
+                local = getattr(self.adb, "adb", None) == "local"
+                cache = tempfile.mkdtemp(prefix="darkls-zvuk-")
+                self._zvuk = zvuk_player.ZvukPlayer(self, zvuk.Auth(DATA_DIR / ".zvuk_auth.json"), cache, local=local)
+            return self._zvuk
+
+    def zvuk_action(self, data):
+        player = self.zvuk_player()
+        if not isinstance(data, dict):
+            raise ValueError("Некорректная команда Звука")
+        action = data.get("action")
+        if action == "token":
+            token = data.get("token")
+            if not isinstance(token, str) or len(token) > 16384:
+                raise ValueError("Некорректный токен Звука")
+            return player.set_token(token)
+        if action == "logout":
+            if player.track and not player.station_foreign():
+                player.stop()
+            player.auth.clear()
+            player.reset_state()
+            player._prune_cache()
+            return player.state()
+        if not player.auth.token:
+            raise ValueError("Войдите в Сбер Звук")
+        if action == "search":
+            if not isinstance(data.get("q"), str) or not 1 <= len(data["q"].strip()) <= 160:
+                raise ValueError("Введите запрос длиной до 160 символов")
+        if action == "play-list" and (not isinstance(data.get("tracks"), list) or len(data["tracks"]) > 300):
+            raise ValueError("В очереди может быть до 300 треков")
+        result = player.action(data)
+        if action in ("play", "play-list", "flow", "next", "prev", "stop", "jump"):
+            player._prune_cache()
+        return result
+
+    def music_library(self, kind, item_id=""):
+        self._need_login()
+        if kind == "album":
+            return self.ymusic.album_tracks(item_id)
+        if kind == "liked":
+            return self.ymusic.liked_tracks()
+        return self.ymusic.playlists()
+
     def music(self):
         g = self.glagol.info()
         p = (g.get("state") or {}).get("playerState")
@@ -1775,6 +1844,11 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
             pos = self._bt_position(p.get("title"))
             if pos:
                 g = {**g, "state": {**g["state"], "playerState": {**p, "progress": pos[0]}}, "progress_at": pos[1]}
+        if self._zvuk and self._zvuk.track:
+            if self._zvuk.station_foreign():
+                self._zvuk.reset_state()
+            else:
+                return {**self._zvuk.music_info(), "auth": self.auth.info()}
         return {"auth": self.auth.info(), "glagol": g}
 
     def _bt_position(self, title):
@@ -1788,6 +1862,11 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
         return self._bt_pos
 
     def music_cmd(self, d):
+        if self._zvuk and self._zvuk.track and d.get("command") in ("play", "stop", "next", "prev", "rewind"):
+            if self._zvuk.station_foreign():
+                self._zvuk.reset_state()
+            else:
+                return self._zvuk.command(d)
         cmd = d.get("command")
         if cmd not in MUSIC_COMMANDS:
             raise AdbError("неизвестная команда")
@@ -1850,9 +1929,18 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
         return r
 
     def music_play(self, item_id, kind):
-        if kind not in ("track", "album", "playlist", "artist"):
+        if kind == "likes":
+            self._need_login()
+            payload = {"command": "sendText", "text": "Играй любимое"}
+        elif kind in ("track", "album", "playlist", "artist"):
+            payload = {"command": "playMusic", "id": str(item_id), "type": kind}
+        else:
             raise AdbError("неизвестный тип")
-        return self.glagol.send({"command": "playMusic", "id": str(item_id), "type": kind})
+        result = self.glagol.send(payload)
+        if result.get("status") == "SUCCESS" and self._zvuk and self._zvuk.track:
+            self._zvuk.reset_state()
+            self._zvuk._prune_cache()
+        return result
 
     def auth_qr_start(self):
         return self.auth.qr_start()
@@ -2345,7 +2433,7 @@ class Handler(BaseHTTPRequestHandler):
     def _handle(self, fn):
         try:
             self._send(200, fn())
-        except (AdbError, glagol.AuthError, ValueError, KeyError) as e:
+        except (AdbError, glagol.AuthError, zvuk.Error, ValueError, KeyError) as e:
             self._send(400, {"error": str(e)})
         except subprocess.TimeoutExpired as e:
             self._send(504, {"error": f"таймаут: {e}"})
@@ -2448,6 +2536,10 @@ class Handler(BaseHTTPRequestHandler):
             "/api/music/lyrics": lambda: p.music_lyrics(q.get("id", "")) if q.get("id") else
                 p.ymusic.lyrics_by_name(q.get("title", ""), q.get("artist", ""), q.get("album"), float(q.get("duration") or 0)),
             "/api/music/queue": p.music_queue,
+            "/api/music/album": lambda: p.music_library("album", q.get("id", "")),
+            "/api/music/liked": lambda: p.music_library("liked"),
+            "/api/music/playlists": lambda: p.music_library("playlists"),
+            "/api/zvuk": lambda: p.zvuk_player().state(),
             "/api/music/similar": lambda: (p._need_login(), p.ymusic.similar(q.get("id", "")))[1],
             "/api/music/artist": lambda: (p._need_login(), p.ymusic.artist(q.get("id", "")))[1],
             "/api/auth": lambda: {**p.auth.info(), "oauth_url": glagol.OAUTH_URL},
@@ -2513,6 +2605,14 @@ class Handler(BaseHTTPRequestHandler):
             directory = unquote(self.headers.get("X-Dir", "/tmp"))
             body = self._body()
             return self._handle(lambda: p.fs_upload(directory, name, body))
+        if u.path == "/api/zvuk":
+            try:
+                if not 0 < int(self.headers.get("Content-Length", 0)) <= 262144:
+                    return self._send(413, {"error": "Запрос Звука превышает допустимый размер"})
+                data = self._json()
+            except ValueError:
+                return self._send(400, {"error": "Некорректный JSON"})
+            return self._handle(lambda: p.zvuk_action(data))
         d = self._json()
         routes = {
             "/api/volume": lambda: p.set_volume(d),
@@ -2760,9 +2860,9 @@ def pick_device(adb_path, where):
     try:
         nets = [ipaddress.ip_network(where, strict=False)] if where != "auto" else local_networks()
     except ValueError:
-        raise SystemExit(f"--find: «{where}» — не подсеть. Пример: --find 192.168.1.0/24")
+        raise SystemExit(f"--find: «{where}» — не подсеть. Пример: --find 192.0.2.0/24")
     if not nets:
-        raise SystemExit("--find: не нашлось локальной сети. Укажите подсеть явно: --find 192.168.1.0/24")
+        raise SystemExit("--find: не нашлось локальной сети. Укажите подсеть явно: --find 192.0.2.0/24")
     print(f"Ищем колонку в {', '.join(map(str, nets))}…")
     found = find_devices(adb_path, nets)
     if not found:
@@ -2859,7 +2959,7 @@ def main():
     ap.add_argument("--device", default=env("ADB_SERIAL"),
                     help="IP колонки (порт 5555 по умолчанию), host:port или серийник USB; запоминается [ADB_SERIAL]")
     ap.add_argument("--find", nargs="?", const="auto", metavar="ПОДСЕТЬ",
-                    help="найти колонку в локальной сети (или в заданной подсети, например 192.168.1.0/24) и запомнить")
+                    help="найти колонку в локальной сети (или в заданной подсети, например 192.0.2.0/24) и запомнить")
     ap.add_argument("--host", default=env("PANEL_HOST", "127.0.0.1"),
                     help="адрес веб-сервера; 0.0.0.0 — доступ из локальной сети [PANEL_HOST]")
     ap.add_argument("--port", type=int, default=int(env("PANEL_PORT", "8765")), help="порт HTTP [PANEL_PORT]")
@@ -2903,8 +3003,8 @@ def main():
     panel = Panel(adb)
     panel.auth = glagol.YandexAuth(AUTH_FILE)
     host = device.rpartition(":")[0] if device and ":" in device else None
-    panel.glagol = glagol.Glagol(panel.auth, host, None, GLAGOL_PLATFORM)
-    panel.ymusic = glagol.YandexMusic(panel.auth)
+    panel.glagol = music_library.Playback(panel.auth, host, None, GLAGOL_PLATFORM)
+    panel.ymusic = music_library.Library(panel.auth)
     panel.conn = Connection(adb)
     panel.leds = LedStream(adb)
     panel.metrics = Metrics(adb, panel.conn)

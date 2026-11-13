@@ -22,6 +22,7 @@ import MediaCard from '../components/MediaCard.vue'
             <button class="sw" style="--c:#F06A1D" data-v="#F06A1D" aria-label="Оранжевый"></button>
             <button class="sw" style="--c:#E0457B" data-v="#E0457B" aria-label="Розовый"></button>
             <button class="sw" style="--c:#52525B" data-v="#52525B" aria-label="Графит"></button>
+            <input type="color" id="set-custom-accent" value="#6c47ff" aria-label="Свой цвет акцента">
           </div></div></div>
         <label class="set-item"><div class="set-label"><b>Плеер внизу страницы</b><small>Мини-плеер на всех вкладках, кроме «Плеера». Появляется после входа в Яндекс</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-minibar"></div></label>

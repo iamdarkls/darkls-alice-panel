@@ -72,3 +72,36 @@ nav.side .ui-icon,nav.side> a>svg{width:20px;height:20px;opacity:.9}
   .term-keys .btn { flex: 0 0 auto; min-width: 42px; min-height: 42px; }
   .term { max-height: max(110px,calc(var(--visual-height,100dvh) - 235px)); }
 }
+
+.music-tabs { flex-wrap: wrap; }
+.music-tabs button { min-height: 40px; }
+#tab-player .trow { min-width: 0; }
+#tab-player .tt { overflow-wrap: anywhere; }
+#pl-queue-play { margin-bottom: 8px; }
+#set-custom-accent { width: 34px; height: 34px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--field); }
+#wz-extra:empty { display: none; }
+.editing #wz-extra { display: flex; min-height: 84px; }
+.sidebar-toggle { align-self: flex-start; }
+@media (min-width: 1320px) {
+  .shell { max-width: min(1680px,100%); }
+  .overview-columns:has(#wz-extra > [data-widget]), .editing .overview-columns {
+    grid-template-columns: repeat(3,minmax(0,1fr));
+  }
+}
+@media (min-width: 761px) {
+  .sidebar.is-collapsed { flex: 0 0 76px; padding-inline: 12px; }
+  .sidebar.is-collapsed .brand > div, .sidebar.is-collapsed .conn,
+  .sidebar.is-collapsed .nav-group, .sidebar.is-collapsed .sidebar-toggle > span { display: none; }
+  .sidebar.is-collapsed nav.side > a { justify-content: center; padding-inline: 8px; }
+  .sidebar.is-collapsed nav.side > a > span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+}
+@media (max-width: 760px) {
+  .sidebar-toggle { display: none; }
+  .shell { padding-inline: env(safe-area-inset-left,0px) env(safe-area-inset-right,0px); }
+  .mobile-nav { padding-inline: max(6px,env(safe-area-inset-left,0px)) max(6px,env(safe-area-inset-right,0px)); }
+  .sidebar nav.side.mobile-open {
+    left: max(8px,env(safe-area-inset-left,0px)); right: max(8px,env(safe-area-inset-right,0px));
+  }
+}

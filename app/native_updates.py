@@ -138,7 +138,10 @@ class Updater:
 
     def _cleanup(self,force=False,proc='/proc'):
         cfg=load_json(self.config_file)
-        if not force and cfg.get('auto_cleanup',True) is False:return dict(skipped='Автоочистка выключена')
+        sweep = force or cfg.get('auto_cleanup', True)
+        drop_previous = cfg.get('keep_previous', True) is False
+        if not sweep and not drop_previous:
+            return dict(skipped='Автоочистка выключена')
         report=dict(checked=time.time(),removed=[],errors=[],freed=0)
         def finish(reason=None):
             if reason:report['skipped']=reason
@@ -151,6 +154,7 @@ class Updater:
             return finish('Обновление ещё проверяется; очистка отложена')
         if releases.is_symlink() or not releases.is_dir():return finish('Каталог сборок недоступен')
         releases=releases.resolve();keep=set()
+        previous = None
         for name in ('current','previous'):
             link=self.base/name
             if not os.path.lexists(link):
@@ -158,7 +162,12 @@ class Updater:
                 continue
             target=link.resolve()
             if target.parent!=releases or not target.is_dir():return finish('Не удалось проверить ссылки сборок')
-            keep.add(target)
+            if name == 'previous' and drop_previous:
+                if not link.is_symlink():
+                    return finish('Предыдущая сборка не указана символической ссылкой')
+                previous = target
+            else:
+                keep.add(target)
         code=Path(__file__).resolve().parent
         if code.parent==releases:keep.add(code)
         # Keep releases still used by the service host or another running panel.
@@ -182,17 +191,22 @@ class Updater:
         for path in sorted(releases.iterdir()):
             if len(report['removed'])>=64:break
             if path.is_symlink() or not path.is_dir() or path in keep:continue
+            is_previous = path == previous
+            if not sweep and not is_previous:
+                continue
             match=re.fullmatch(r'(\d+\.\d+\.\d+)-[a-f0-9]{12}',path.name)
             if not match:continue
             try:
-                if time.time()-path.stat().st_mtime<3600:continue
+                if not is_previous and time.time()-path.stat().st_mtime<3600:continue
                 marker=path/'DARKLS_VERSION'
                 if marker.is_symlink() or not marker.is_file() or marker.stat().st_size>32 or marker.read_text().strip()!=match[1]:continue
                 if not (path/'native.py').is_file():continue
+                if is_previous:
+                    (self.base / 'previous').unlink()
                 shutil.rmtree(path);report['removed'].append('releases/'+path.name)
             except UnicodeError:continue
             except OSError as exc:report['errors'].append(path.name+': '+str(exc))
-        for name in ('config.json','update-status.json','cleanup-status.json'):
+        for name in (('config.json','update-status.json','cleanup-status.json') if sweep else ()):
             for path in self.base.glob(name+'.*.new'):
                 if len(report['removed'])>=96:break
                 try:
@@ -209,6 +223,7 @@ class Updater:
         installed = (active / 'DARKLS_VERSION').read_text().strip() if active.is_dir() else None
         return dict(installed=installed, feed=cfg.get('update_feed', ''),
                     auto_cleanup=cfg.get('auto_cleanup',True) is not False,cleanup=load_json(self.cleanup_file),
+                    keep_previous=cfg.get('keep_previous', True) is not False,
                     free=shutil.disk_usage(self.base).free,required_free=MAX_UNPACKED+RESERVE,
                     auto=bool(cfg.get('auto_update') and cfg.get('update_feed')),
                     interval_hours=cfg.get('update_interval_hours', 6),
@@ -229,8 +244,14 @@ class Updater:
                 raise ValueError('auto должен быть true/false')
             auto_cleanup=data.get('auto_cleanup',cfg.get('auto_cleanup',True))
             if not isinstance(auto_cleanup,bool):raise ValueError('auto_cleanup должен быть true/false')
-            cfg.update(update_feed=feed, auto_update=bool(feed and auto),auto_cleanup=auto_cleanup)
+            keep_previous = data.get('keep_previous', cfg.get('keep_previous', True))
+            if not isinstance(keep_previous, bool):
+                raise ValueError('keep_previous должен быть true/false')
+            cfg.update(update_feed=feed, auto_update=bool(feed and auto), auto_cleanup=auto_cleanup,
+                       keep_previous=keep_previous)
             atomic_json(self.config_file, cfg)
+            if not keep_previous:
+                self._cleanup()
             return self.info()
 
     def _manifest(self):

@@ -34,6 +34,10 @@ paths:
 '''
 REGISTRY_URL='https://repo.yse.wtf/v2'
 REGISTRY_KEY='ed25519:5Rz8F47uftWVU5kLgWYhprkEZ4rpP2kecUge/a7KQas='
+HOMEPAGES={
+    'alice/airplay':'https://github.com/Yandex-Station-Universal-Repo/Station-airplay',
+    'tangenx/wakeword':'https://github.com/tangenx/station-wakeword',
+}
 OPENER=urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
@@ -122,7 +126,23 @@ class Yam2:
                     events=list(self.events),capabilities=['list','install','remove','files','which','search','info','plan','registry','doctor','repair','update','entware','service-list'])
 
     def packages(self):
-        return [dict(name=n,version=v,target=t) for n,v,t in rows(self.command(['list']),3)]
+        links=load_json(self.base/'data/yam-homepages.json')
+        return [dict(name=n,version=v,target=t,homepage=links.get(n) or HOMEPAGES.get(n))
+                for n,v,t in rows(self.command(['list']),3)]
+
+    def package_homepage(self, prefix, name):
+        # Metadata is optional; package installation uses the signed index independently.
+        try:
+            info=json.loads(self.command(prefix+['info',name],timeout=12))
+            value=info.get('homepage') or (info.get('package') or {}).get('homepage')
+            if not isinstance(value,str) or len(value)>500 or any(c.isspace() for c in value):
+                return
+            url=urlsplit(value)
+            if url.scheme!='https' or not url.hostname or url.username is not None or url.password is not None:
+                return
+            return value
+        except (OSError,ValueError,TypeError,AttributeError):
+            pass
 
     def registries(self):
         return [dict(name=n,url=u) for n,u in rows(self.command(['registry','list']),2)]
@@ -233,10 +253,15 @@ class Yam2:
         if action=='entware':
             status=self.command(['entware','status']).strip();return dict(status=status,packages=self.command(['entware','list']) if status=='available' else '')
         if action not in ('install','remove','repair','registry-add','registry-remove','official-registry','update'):raise ValueError('Неизвестное действие YAM')
+        homepage=None
+        if action=='install':
+            spec=package_spec(data.get('name'))
+            package=spec.split('@',1)[0]
+            homepage=self.package_homepage(prefix,package)
         with self.mutation(pause=action in ('install','remove','update','repair')):
             if action=='update':return self._update()
             if action=='install':
-                spec=package_spec(data.get('name'));args=prefix+['install',spec]
+                args=prefix+['install',spec]
                 if data.get('allow_replacements') is True:args.append('--yes')
             elif action=='remove':args=['remove',package_name(data.get('name'))]
             elif action=='repair':args=['repair']
@@ -251,6 +276,10 @@ class Yam2:
                 args=['registry','add','official' if action=='official-registry' else registry,url,'--key',key]
             try:
                 report=self.command(args,timeout=240 if action=='install' else 60)
+                if homepage:
+                    path=self.base/'data/yam-homepages.json'
+                    with contextlib.suppress(OSError):
+                        atomic_json(path,{**load_json(path),package:homepage})
                 self.note(action,True,report)
                 return dict(ok=True,report=report)
             except ValueError as exc:self.note(action,False,str(exc));raise

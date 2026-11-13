@@ -16,9 +16,10 @@ from urllib.parse import urlsplit
 
 from native_updates import atomic_json, load_json
 
-ASSISTANT_URL = 'https://github.com/dimap/yapanel-web/releases/download/v0.2.5/assistantd-linux-arm64'
-ASSISTANT_SHA256 = '07d970dfdbd573284ab202ab1123525acdd0854caafa1ac023fb80f49f88c007'
-ASSISTANT_SIZE = 5308568
+ASSISTANT_URL = 'https://github.com/dimap/yapanel-web/releases/download/v0.3.1/assistantd-linux-arm64'
+ASSISTANT_SHA256 = 'bd3b00741020431bc24f73c275ebf67dd8e1e4a1fd02fc46e80066b9b717daf9'
+ASSISTANT_SIZE = 6029464
+ASSISTANT_VERSION = "0.3.1"
 WORD = r'[A-Za-z0-9_-]{1,100}'
 WAKE_PATH = re.compile(rf'/(?:words/{WORD}|enroll/(?:start|cancel|ambient|take|train))')
 
@@ -76,6 +77,7 @@ class Assistant(Service):
         self.root = data / 'assistant'
         self.config = self.root / 'config.json'
         self.binary = self.root / 'assistantd'
+        self.binary_version = self.root / 'version.json'
         self.command = Path('/tmp/webpanel_assistant.cmd')
         self.status = Path('/tmp/webpanel_assistant.json')
 
@@ -90,6 +92,13 @@ class Assistant(Service):
         return dict(installed=self.binary.is_file(), enabled=self.enabled(), running=self.running(),
                     confirmed=cfg.get('confirmed', False), url=llm.get('base_url', ''),
                     model=llm.get('model', ''), has_key=bool(cfg.get('keys', {}).get(llm.get('base_url', '').lower())),
+                    version=load_json(self.binary_version).get('version'),
+                    available_version=ASSISTANT_VERSION,
+                    profiles=[{'url': p['url'], 'model': p['model'], 'transport':p.get('transport','chat')}
+                              for p in cfg.get('profiles', [])],
+                    transport=llm.get('transport', 'chat'),
+                    skills=cfg.get('skills', {'time': True, 'weather': False}),
+                    weather=cfg.get('weather', {}),
                     history=status.get('history') or [], route=status.get('route') is True,
                     error=self.error or status.get('config_error', ''))
 
@@ -115,6 +124,7 @@ class Assistant(Service):
                 os.fsync(handle.fileno())
                 path.chmod(0o700)
                 path.replace(self.binary)
+                atomic_json(self.binary_version, {'version': ASSISTANT_VERSION})
             finally:
                 path.unlink(missing_ok=True)
 
@@ -136,8 +146,34 @@ class Assistant(Service):
         keys = cfg.get('keys', {})
         if key:
             keys[url.lower()] = key
+        transport=data.get('transport', cfg.get('llm', {}).get('transport', 'chat'))
+        if transport not in ('chat', 'realtime'):
+            raise ValueError('Неизвестный режим API')
+        if transport=='realtime' and load_json(self.binary_version).get('version') != ASSISTANT_VERSION:
+            raise ValueError('Для Realtime сначала обнови помощника')
+        profiles = [p for p in cfg.get('profiles', []) if (p['url'].lower(),p['model']) != (url.lower(),model.strip())]
+        profiles = [{'url': url, 'model': model.strip(), 'transport':transport}, *profiles][:16]
+        skills, weather = cfg.get('skills', {'time': True, 'weather': False}), cfg.get('weather', {})
+        if 'skills' in data:
+            requested = data['skills']
+            if not isinstance(requested, dict) or any(type(requested.get(k)) is not bool for k in ('time', 'weather')):
+                raise ValueError('Некорректные настройки локальных команд')
+            skills = {k: requested[k] for k in ('time', 'weather')}
+        if 'weather' in data:
+            point = data['weather']
+            if not isinstance(point, dict) or not isinstance(point.get('city'), str):
+                raise ValueError('Укажи город и координаты')
+            if len(point['city'].strip()) > 80:
+                raise ValueError('Название города слишком длинное')
+            if skills.get('weather'):
+                lat, lon = point.get('lat'), point.get('lon')
+                if (type(lat) not in (int, float) or type(lon) not in (int, float) or
+                        not -90 <= lat <= 90 or not -180 <= lon <= 180):
+                    raise ValueError('Укажи широту и долготу для погоды')
+                weather = {'city': point['city'].strip(), 'lat': lat, 'lon': lon}
         atomic_json(self.config, {**cfg, 'confirmed': confirmed, 'enabled': self.enabled() and confirmed,
-                    'llm': {'base_url': url, 'model': model.strip()}, 'keys': keys,
+                    'profiles': profiles, 'skills': skills, 'weather': weather,
+                    'llm': {**cfg.get('llm', {}), 'base_url': url, 'model': model.strip(), 'transport': transport}, 'keys': keys,
                     'led': {'enabled': False}, 'radio': {'voice': False}})
         if not confirmed:
             self.stop()

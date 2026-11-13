@@ -1,10 +1,10 @@
 import crypto from'node:crypto';import fs from'node:fs';import http from'node:http';import path from'node:path';import assert from'node:assert/strict';import{fileURLToPath}from'node:url';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||new URL('../frontend/node_modules/playwright-core/index.mjs',import.meta.url).href)
 const root=fileURLToPath(new URL('../app',import.meta.url)),calls=[],errors=[];let unauthorized=false,webReady=true,mediaReady=false,termConnections=0;
-let scenes={};
-const status={hostname:'Yandex-Mini-gen3-Pro-TEST',hardware_model:'pickle',ip_address:'192.168.50.168',temp:42000,mem_total:480000,mem_avail:300000,uptime:10000,load:'0.1 0.2 0.3',vol_level:100,vol_bt:100,quasar:'running',quasar_version:'factory-12',device_id:'TEST',ssid:'TEST',kernel:'5.4.242',date:'2026-11-06',ffmpeg:true,color:'blue'}
+let scenes={}, musicLogged=false;
+const status={hostname:'Yandex-Mini-gen3-Pro-TEST',hardware_model:'pickle',ip_address:'192.0.2.10',temp:42000,mem_total:480000,mem_avail:300000,uptime:10000,load:'0.1 0.2 0.3',vol_level:100,vol_bt:100,quasar:'running',quasar_version:'factory-12',device_id:'TEST',ssid:'TEST',kernel:'5.4.242',date:'2026-11-06',ffmpeg:true,color:'blue'}
 function fixture(p,body){
- if(p==='/api/conn')return{state:'online',serial:'192.168.50.168:5555',log:[]};if(p==='/api/status')return status;
+ if(p==='/api/conn')return{state:'online',serial:'192.0.2.10:5555',log:[]};if(p==='/api/status')return status;
  if(p==='/api/profile')return{id:'mini3pro',name:'Станция Мини 3 Про',clock:true,light:true,boot:true,alarms:true,auto:true,light_note:'Кольцо',clock_type:'segment'};
  if(p==='/api/panel-auth')return{enabled:false,authed:true,sessions:1};if(p==='/api/panel/version')return{version:'0.7.0',repo:'https://github.com/iamdarkls/darkls-alice-panel',update:{available:false},installed:true};
  if(p==='/api/darkls/health')return{native:true,device:{model:'Мини 3 Про',platform:'pickle'},adb:{state:'online',log:[]}};
@@ -25,7 +25,11 @@ function fixture(p,body){
  if(p==='/api/native/voice/status')return{agent:'darkls-voice-agent',state:{ActiveState:'inactive'}};
  if(p==='/api/native/diagnostics')return{created:1700000000,firmware:'factory-12',checks:[{name:'Storage',status:'ok',detail:'100 MB'}]};
  if(p==='/api/native/backups')return{last_backup:{created:1700000000,size:1024}};
- if(p==='/api/music')return{auth:{logged_in:false},glagol:{state:{playing:false,playerState:null}}};
+ if(p==='/api/music')return{auth:{logged_in:musicLogged},glagol:{connected:musicLogged,state:{playing:false,playerState:null}}};
+ if(p==='/api/music/liked')return[{id:'7',title:'Избранный трек',artists:'Исполнитель'}];
+ if(p==='/api/music/playlists')return[{id:'123:2',title:'Подборка',tracks:5}];
+ if(p==='/api/music/play')return{status:'SUCCESS'};
+ if(p==='/api/zvuk')return body.action==='search'?{tracks:[{id:'2',title:'Найденный трек',artists:'Исполнитель'}]}:{has_token:true,queue:[],track:null};
  if(p==='/api/alarms')return{alarms:[],installed:false,running:false,state:{},log:[]};
  if(p==='/api/bt')return{devices:[],available:true};if(p==='/api/clock/boot')return{frames:[{ms:100,v:Array(46).fill(0)}],default:[{ms:100,v:Array(46).fill(0)}]};
  if(p==='/api/sounds'||p==='/api/patterns'||p==='/api/logs')return[];
@@ -61,6 +65,22 @@ try{
  await tab('wakeword');await page.getByLabel('Действие для Привет').selectOption('demo');
  await page.waitForTimeout(100);assert(calls.some(c=>c.api==='/api/native/wakeword'&&c.body.scene==='demo'));
  for(const name of ['home','overview','player','alarm','charts','boot','files','logs','console','settings','backups'])await tab(name);
+ musicLogged=true;await tab('player');
+ await page.getByRole('button',{name:'Избранное',exact:true}).click();
+ await page.getByText('Избранный трек',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Играть всё',exact:true}).click();
+ await page.getByText('Команда отправлена',{exact:true}).waitFor();
+ assert(calls.some(c=>c.api==='/api/music/play'&&c.body.type==='likes'));
+ await page.getByRole('button',{name:'Плейлисты',exact:true}).click();
+ await page.getByText('Подборка',{exact:true}).click();
+ await page.getByText('Команда отправлена',{exact:true}).waitFor();
+ assert(calls.some(c=>c.api==='/api/music/play'&&c.body.id==='123:2'));
+ await page.getByRole('button',{name:'Сбер Звук',exact:true}).click();
+ await page.getByRole('textbox',{name:'Поиск в Сбер Звуке'}).fill('Тест');
+ await page.getByRole('button',{name:'Найти',exact:true}).click();
+ await page.getByText('Найденный трек',{exact:true}).waitFor();
+ const sidebar=page.getByRole('button',{name:'Свернуть меню',exact:true});
+ await sidebar.click();await page.getByRole('button',{name:'Развернуть меню',exact:true}).click();
  const connectionCount=termConnections;assert(connectionCount>0);await tab('apps');await tab('console');assert.equal(termConnections,connectionCount,'Switching tabs must preserve terminal session');
  await tab('settings');await page.locator('#media-install').click();await page.waitForTimeout(100);assert(calls.some(c=>c.api==='/api/native/media/install'));await tab('settings');
  assert.equal(await page.locator('nav.side a:not(:has(svg))').count(),0);

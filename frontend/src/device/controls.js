@@ -706,7 +706,10 @@ function maskLog(t) {
   for (const v of [st.device_id, st.ssid, st.address, ymLogin, serial, ...uids].filter(v => v && v.length >= 4))
     t = t.split(v).join('••••');
   return t.replace(/\b(?:y0_|AQAAAA)[\w-]{10,}/g, '••••')                           // OAuth-токены
-    .replace(/(token["']?\s*[:=]\s*["']?)[\w.-]{20,}/gi, '$1••••')
+    .replace(/\b(sk|rk|pk|gsk|xai)-[\w-]{8,}/g, '$1-••••')
+    .replace(/(\b(?:bearer|basic)\s+)[\w.~+/=-]+/gi, '$1••••')
+    .replace(/(\b(?:[\w-]*token|api[_-]?key|sign(?:ature)?|secret|password|endpoint[_-]?(?:id|uuid)?|(?:device|account|session|request)[_-]?id|serial(?:[_-]?number)?|wifi_hash|ssid|bssid)["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\s"'&,;<>{}\[\]]+)/gi, '$1••••')
+    .replace(/\b[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}\b/gi, '••••')
     .replace(/(\b[Aa]ccount[ :=]+)\d{5,}/g, '$1••••')
     .replace(/("wifi_hash"\s*:\s*")[0-9a-f]+/g, '$1••••')
     // MAC роутера (BSSID) находится в открытых базах точек Wi‑Fi — по нему можно узнать адрес
@@ -931,8 +934,8 @@ function renderMusic() {
   stopQr();
 
   const g = i.glagol, s = g.state, p = s?.playerState, has = muHas();
-  const isBt = p?.playerType === 'bluetooth';
-  document.body.classList.toggle('mu-bt', isBt);
+  const isBt = p?.playerType === 'bluetooth', isZvuk = p?.playerType === 'zvuk';
+  document.body.classList.toggle('mu-bt', isBt || isZvuk);
   $('#mu-err').hidden = g.connected;
   $('#mu-err').textContent = g.connected ? '' : (g.error || 'Подключаемся к колонке…');
   const title = has ? p.title : 'Ничего не играет';
@@ -980,12 +983,11 @@ function renderMusic() {
     $$('.mu-vol-v').forEach(e => e.textContent = Math.round(s.volume * 100));
   }
 
-  if (p?.id && p.id !== mu.trackId) {   // сменился трек — подробности и всё для вкладки «Плеер»
-    mu.trackId = p.id; mu.track = null; mu.extras = {};
-    if (!isBt) api('/api/music/info?id=' + encodeURIComponent(p.id)).then(t => { if (mu.trackId === p.id) { mu.track = t; renderMusic(); } }).catch(() => {});
-    if (!$('#tab-player').hidden) loadPlayerExtras();
+  if (p?.id && (p.id !== mu.trackId || p.playerType !== mu.trackSource)) {   // сменился трек — подробности и всё для вкладки «Плеер»
+    mu.trackId = p.id; mu.trackSource = p.playerType; mu.track = null; mu.extras = {};
+    if (!isBt && !isZvuk) api('/api/music/info?id=' + encodeURIComponent(p.id)).then(t => { if (mu.trackId === p.id && mu.trackSource === p.playerType) { mu.track = t; renderMusic(); } }).catch(() => {});
   }
-  if (!$('#tab-player').hidden) renderPlayerTab();
+  if (!$('#tab-player').hidden) { renderPlayerTab(); loadPlayerExtras(); }
 }
 setInterval(() => muState()?.playing && !mu.seeking && renderMusic(), 250);   // плавный прогресс
 
@@ -996,6 +998,14 @@ function renderPlayerTab() {
   const q = mu.extras.queue;
   const src = q?.title || (p?.playlistId === 'user:onyourwave' ? 'Моя волна' : p?.playlistDescription);
   const isBt = p?.playerType === 'bluetooth';
+  const tabs = $('#pl-list-tabs');
+  tabs.dataset.albumId = t?.album?.id || '';
+  const playable = p?.playlistId && ['Album','Playlist','Artist'].includes(p.playlistType) && ymSourcePath(p);
+  const queueId = playable && p.playlistType === 'Playlist' && !String(p.playlistId).includes(':')
+    ? p.playlistPuid + ':' + p.playlistId : p?.playlistId;
+  tabs.dataset.queueId = playable ? queueId : '';
+  tabs.dataset.queueType = playable ? p.playlistType.toLowerCase() : '';
+  $('#pl-queue-play').hidden = !playable;
   const srcPath = !isBt && muHas() ? ymSourcePath(p) : null;
   setHtml($('#pl-source'), isBt ? 'Bluetooth · звук с телефона или компьютера'
     : muHas() ? esc(PL_TYPES[p.playlistType] || p.playlistType || '') + (src ? ' · ' + (srcPath ? ymA(srcPath, src) : esc(src)) : '') : 'Ничего не играет');
@@ -1033,23 +1043,24 @@ function renderRaw() {
 $('#pl-raw-box').addEventListener('toggle', renderRaw);
 // ручная прокрутка текста (колесо, тач, перетаскивание полосы) — ставит автопрокрутку на паузу
 ['wheel', 'touchmove', 'pointerdown'].forEach(ev => $('#pl-lyrics').addEventListener(ev, () => { $('#pl-lyrics')._userScroll = Date.now(); }, { passive: true }));
-const trackRow = (t, cur, tag) => `<button class="trow${cur ? ' cur' : ''}" data-play="${esc(t.id)}" ${t.available === false ? 'disabled' : ''}>
+const trackRow = (t, cur, tag) => `<div class="trow${cur ? ' cur' : ''}">
   ${t.cover ? `<img src="${esc(t.cover)}" alt="" loading="lazy">` : '<span class="ph"></span>'}
   <span class="tt"><b>${esc(t.title)}</b><span>${esc(t.artists)}</span></span>
-  ${tag ? `<span class="badge${cur ? ' ok' : ''}">${tag}</span>` : ''}<span class="td">${t.durationMs ? fmtDur(t.durationMs / 1000) : ''}</span></button>`;
+  ${tag ? `<span class="badge${cur ? ' ok' : ''}">${tag}</span>` : ''}<span class="td">${t.durationMs ? fmtDur(t.durationMs / 1000) : ''}</span></div>`;
 async function loadPlayerExtras() {
   const id = mu.trackId;
-  if (!id || mu.extras.for === id) return;
-  mu.extras = { for: id };
+  if (!id || (mu.extras.for === id && mu.extras.source === mu.trackSource)) return;
+  const source = mu.trackSource;
+  mu.extras = { for: id, source };
   $('#pl-lyrics').innerHTML = $('#pl-queue').innerHTML = $('#pl-similar').innerHTML = '<div class="empty">Загрузка…</div>';
-  const p = muPlayer(), isBt = p?.playerType === 'bluetooth';
+  const p = muPlayer(), isBt = ['bluetooth','zvuk'].includes(p?.playerType);
   // По Bluetooth у трека нет id Яндекса: текст ищем в LRCLIB по названию, очередь и похожие не нужны.
   const lyUrl = isBt ? '/api/music/lyrics?' + new URLSearchParams({ title: p.title || '', artist: p.subtitle || '', album: p.extra?.album || '', duration: p.duration || 0 })
-                     : '/api/music/lyrics?id=' + id;
+                     : '/api/music/lyrics?id=' + encodeURIComponent(id);
   const none = Promise.reject(new Error('—'));
   none.catch(() => {});
   const [ly, q, sim] = await Promise.allSettled([api(lyUrl), isBt ? none : api('/api/music/queue'), isBt ? none : api('/api/music/similar?id=' + id)]);
-  if (mu.trackId !== id) return;
+  if (mu.trackId !== id || mu.trackSource !== source) return;
   const L = ly.status === 'fulfilled' ? ly.value : {};
   if (L.text) {
     mu.extras.lyrics = L;
@@ -1082,7 +1093,7 @@ async function loadPlayerExtras() {
   if (!aid) { $('#pl-artist').innerHTML = '<div class="empty">—</div>'; return; }
   try {
     const a = await api('/api/music/artist?id=' + aid);
-    if (mu.trackId !== id) return;
+    if (mu.trackId !== id || mu.trackSource !== source) return;
     $('#pl-artist').innerHTML = `<div class="artist-grid">
       ${a.cover ? `<img src="${esc(a.cover)}" alt="">` : '<span></span>'}
       <div class="col" style="gap:8px">
@@ -1107,6 +1118,7 @@ function musicAction(a, btn) {
     return muCmd(btn, { command: 'play' });
   }
   if (a === 'prev' || a === 'next') return muCmd(btn, { command: a });
+  if (p?.playerType === 'zvuk') return;
   if (a === 'shuffle') return muCmd(btn, { command: 'shuffle', enable: !p?.entityInfo?.shuffled });
   if (a === 'repeat') return muCmd(btn, { command: 'repeat', mode: { None: 'All', All: 'One', One: 'None' }[p?.entityInfo?.repeatMode || 'None'] });
   if (!p?.id) return;
@@ -1140,8 +1152,6 @@ listen(touchCover, 'pointerup', e => {
 listen(document, 'click', e => {
   const b = e.target.closest('[data-mu]');
   if (b) return musicAction(b.dataset.mu, b);
-  const r = e.target.closest('[data-play]');
-  if (r) act(r, () => api('/api/music/play', { id: r.dataset.play, type: 'track' }), 'Включаю');
 });
 listen(document, 'input', e => {
   if (e.target.matches('input.mu-seek')) { mu.seeking = true; $$('.mu-pos').forEach(x => x.textContent = fmtDur(+e.target.value)); }
@@ -1477,7 +1487,7 @@ wrap.ondragleave = e => { if (!wrap.contains(e.relatedTarget)) wrap.classList.re
 wrap.ondrop = e => { e.preventDefault(); wrap.classList.remove('over'); fsUpload([...e.dataTransfer.files]); };
 
 // ---------- настройка «Обзора»: виджеты можно убирать, возвращать и переставлять ----------
-const LAYOUT_KEY = 'ov.layout', ZONES = ['wz-top', 'wz-left', 'wz-right'];
+const LAYOUT_KEY = 'ov.layout', ZONES = ['wz-top', 'wz-left', 'wz-right', 'wz-extra'];
 const widgetEls = () => $$('[data-widget]');
 function readLayout() {
   const ids = el => [...el.children].filter(c => c.dataset.widget).map(c => c.dataset.widget);
@@ -1487,6 +1497,7 @@ const DEFAULT_LAYOUT = { zones: {
   'wz-top': ['stats'],
   'wz-left': ['model', 'volume', 'bt', 'sounds'],
   'wz-right': ['music', 'clock', 'light', 'device'],
+  'wz-extra': [],
 }, hidden: [] };
 const homeZone = id => ZONES.find(z => DEFAULT_LAYOUT.zones[z].includes(id)) || 'wz-right';
 function applyLayout(l) {
@@ -1516,7 +1527,10 @@ function moveWidget(w, how) {
   const sib = dir => { let s = w[dir]; while (s && !s.dataset.widget) s = s[dir]; return s; };
   if (how === 'up') { const s = sib('previousElementSibling'); if (s) zone.insertBefore(w, s); }
   else if (how === 'down') { const s = sib('nextElementSibling'); if (s) s.after(w); }
-  else if (how === 'side') $(zone.id === 'wz-left' ? '#wz-right' : '#wz-left').append(w);
+  else if (how === 'side') {
+    const columns = ZONES.slice(1);
+    $('#' + columns[(columns.indexOf(zone.id) + 1) % columns.length]).append(w);
+  }
   else if (how === 'hide') $('#wz-hidden').append(w);
   saveLayout();
 }
@@ -1576,7 +1590,9 @@ try { const saved = JSON.parse(store.get(LAYOUT_KEY)); if (saved) applyLayout(sa
 
 // Оформление: тема, акцент, визуализатор (храним в браузере; применяется ещё в <head>).
 function applyUI() {
-  const root = document.documentElement, theme = store.get('ui.theme') || 'auto', accent = store.get('ui.accent') || '';
+  const root = document.documentElement, theme = store.get('ui.theme') || 'auto';
+  const saved = store.get('ui.accent') || '';
+  const accent = /^#[a-f0-9]{6}$/i.test(saved) ? saved : '';
   if (theme === 'auto') delete root.dataset.theme; else root.dataset.theme = theme;
   for (const [k, v] of [['--accent', accent], ['--accent-ink', accent && `color-mix(in srgb, ${accent} 72%, var(--text))`],
                         ['--accent-soft', accent && `color-mix(in srgb, ${accent} 15%, var(--card))`]])
@@ -1584,6 +1600,7 @@ function applyUI() {
   window.__vizOff = store.get('ui.viz') === '0';
   $$('#set-theme button').forEach(b => b.classList.toggle('active', b.dataset.v === theme));
   $$('#set-accent .sw').forEach(b => b.classList.toggle('sel', b.dataset.v === accent));
+  $('#set-custom-accent').value = accent || '#6c47ff';
   $('#set-viz').checked = !window.__vizOff;
   window.__vizIdleOff = store.get('ui.vizIdle') === '0';
   $('#set-viz-idle').checked = !window.__vizIdleOff;
@@ -1597,6 +1614,7 @@ function applyUI() {
   window.dispatchEvent(new Event('themechange'));
 }
 $$('#set-theme button').forEach(b => b.onclick = () => { store.set('ui.theme', b.dataset.v); applyUI(); });
+listen($('#set-custom-accent'), 'input', e => { store.set('ui.accent', e.target.value.toUpperCase()); applyUI(); });
 $$('#set-accent .sw').forEach(b => b.onclick = () => { store.set('ui.accent', b.dataset.v); applyUI(); });
 $('#set-viz').onchange = e => { store.set('ui.viz', e.target.checked ? '1' : '0'); applyUI(); };
 $('#set-viz-idle').onchange = e => { store.set('ui.vizIdle', e.target.checked ? '1' : '0'); applyUI(); };

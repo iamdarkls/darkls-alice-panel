@@ -37,6 +37,28 @@ class Cleanup(unittest.TestCase):
    folder=self.base/name;folder.mkdir();(folder/'keep').write_text(name)
   self.release('0.6.1');self.run_clean()
   for name in ('runtime','data','tools','archives','yam'):self.assertEqual((self.base/name/'keep').read_text(),name)
+ def test_can_drop_previous_immediately_even_with_auto_cleanup_disabled(self):
+  old=self.release('0.6.1')
+  os.utime(self.previous,(time.time(),)*2)
+  atomic_json(self.u.config_file,dict(auto_cleanup=False,keep_previous=False))
+  self.assertEqual(self.run_clean()['removed'],['releases/'+self.previous.name])
+  self.assertTrue(self.current.exists())
+  self.assertFalse(self.previous.exists())
+  self.assertFalse(os.path.lexists(self.base/'previous'))
+  self.assertTrue(old.exists())
+
+ def test_drop_previous_protects_pending_and_running_releases(self):
+  atomic_json(self.u.config_file,dict(keep_previous=False))
+  atomic_json(self.u.state_file,dict(pending='0.6.4'))
+  self.assertIn('skipped',self.run_clean())
+  self.u.state_file.unlink()
+  pid=self.proc/'123'
+  pid.mkdir()
+  os.symlink(self.previous,pid/'cwd')
+  (pid/'cmdline').write_bytes(b'python')
+  self.assertEqual(self.run_clean()['removed'],[])
+  self.assertTrue((self.base/'previous').is_dir())
+
  def test_config_toggle_preserves_existing_feed(self):
   feed='https://github.com/owner/repo/releases/latest/download/update.json';atomic_json(self.u.config_file,dict(update_feed=feed,auto_update=True))
   result=self.u.configure(dict(auto_cleanup=False));self.assertFalse(result['auto_cleanup']);self.assertEqual(result['feed'],feed);self.assertTrue(result['auto']);self.assertIn('free',result)

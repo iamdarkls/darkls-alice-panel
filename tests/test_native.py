@@ -183,6 +183,13 @@ class UpdatesTests(unittest.TestCase):
             self.updater.configure(dict(feed='http://unsafe.test/feed', auto=True))
 
 
+class ReleaseVersionTests(unittest.TestCase):
+    def test_panel_reports_the_packaged_version(self):
+        import darkls
+
+        self.assertEqual(darkls.VERSION, (APP / 'DARKLS_VERSION').read_text().strip())
+
+
 @unittest.skipUnless(os.geteuid() == 0, 'native launcher requires root')
 class ProcessTests(unittest.TestCase):
     def test_full_native_launcher_without_adb(self):
@@ -207,6 +214,7 @@ class ProcessTests(unittest.TestCase):
                     self.fail('Native server did not start')
                 self.assertTrue(value['native'])
                 self.assertEqual(value['pid'], proc.pid)
+                self.assertEqual(value['version'], (APP / 'DARKLS_VERSION').read_text().strip())
                 with urllib.request.urlopen(f'http://127.0.0.1:{port}/') as response:
                     self.assertIn(b'static/ui/panel.js', response.read())
                 request = urllib.request.Request(f'http://127.0.0.1:{port}/api/shell', data=b'{}', headers={'Content-Type':'application/json'})

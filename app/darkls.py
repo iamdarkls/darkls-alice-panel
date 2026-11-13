@@ -6,11 +6,12 @@ import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 from urllib.parse import urlparse
 import profiles
 import server as s
 import native_station
-VERSION = "0.7.0"
+VERSION = Path(__file__).with_name('DARKLS_VERSION').read_text(encoding='utf-8').strip()
 UPSTREAM_COMMIT = "7df9f78e3a0fde1dcdee92e6b2f43293faf17d8a"
 
 def health(panel):
